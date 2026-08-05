@@ -36,6 +36,10 @@ BEGIN_MESSAGE_MAP(CVideoView, CView)
     ON_WM_ERASEBKGND()
     ON_WM_TIMER()
     ON_WM_DESTROY()
+    ON_WM_MOUSEWHEEL()
+    ON_WM_LBUTTONDOWN()
+    ON_WM_LBUTTONUP()
+    ON_WM_MOUSEMOVE()
 END_MESSAGE_MAP()
 
 static void RefreshStatusBar(CVideoDoc* pDoc)
@@ -267,49 +271,67 @@ bool CVideoView::CreateFrameBitmap()
 
 void CVideoView::OnDraw(CDC* /*pDC*/)
 {
-    if (!CreateDeviceResources() || !m_d2dContext || !m_swapChain)
+    CRect rc;
+    GetClientRect(&rc);
+    if (rc.Width() <= 0 || rc.Height() <= 0)
         return;
 
+    if (!m_d2dContext || !m_swapChain || !m_targetBitmap)
+    {
+        if (!CreateDeviceResources())
+            return;
+        if (!m_d2dContext || !m_swapChain || !m_targetBitmap)
+            return;
+    }
+
     CVideoDoc* doc = GetDocument();
-    CreateFrameBitmap();
+    if (doc && doc->HasVideo())
+        CreateFrameBitmap();
 
     m_d2dContext->BeginDraw();
     m_d2dContext->Clear(D2D1::ColorF(D2D1::ColorF::Black));
 
     if (m_frameBitmap)
     {
-        D2D1_SIZE_F size = m_frameBitmap->GetSize();
-        CRect rc;
-        GetClientRect(&rc);
+        D2D1_SIZE_F bmpSize = m_frameBitmap->GetSize();
 
         UINT rot = 0;
         if (doc && doc->HasVideo() && doc->m_reader)
             rot = doc->m_reader->GetRotationDegrees();
 
         const bool swapWH = (rot == 90 || rot == 270);
-        const float srcW = swapWH ? size.height : size.width;
-        const float srcH = swapWH ? size.width : size.height;
+        const float srcW = swapWH ? bmpSize.height : bmpSize.width;
+        const float srcH = swapWH ? bmpSize.width : bmpSize.height;
 
-        const float sx = rc.Width() / srcW;
-        const float sy = rc.Height() / srcH;
-        const float scale = (sx < sy) ? sx : sy;
+        // 1) Fit-to-window scale
+        float fit = 1.0f;
+        if (srcW > 0.f && srcH > 0.f)
+        {
+            const float sx = static_cast<float>(rc.Width()) / srcW;
+            const float sy = static_cast<float>(rc.Height()) / srcH;
+            fit = (sx < sy) ? sx : sy;
+        }
 
+        // 2) Apply user zoom
+        const float z = (m_zoom < 1.0f) ? 1.0f : m_zoom;
+        const float scale = fit * z;
+
+        // 3) Center + pan
         const float dw = srcW * scale;
         const float dh = srcH * scale;
-        const float ox = (rc.Width() - dw) * 0.5f;
-        const float oy = (rc.Height() - dh) * 0.5f;
+        const float ox = (static_cast<float>(rc.Width()) - dw) * 0.5f + m_panX;
+        const float oy = (static_cast<float>(rc.Height()) - dh) * 0.5f + m_panY;
 
-        D2D1_POINT_2F center = D2D1::Point2F(ox + dw * 0.5f, oy + dh * 0.5f);
+        const D2D1_POINT_2F center = D2D1::Point2F(ox + dw * 0.5f, oy + dh * 0.5f);
 
-        D2D1_MATRIX_3X2_F transform =
-            D2D1::Matrix3x2F::Rotation(static_cast<FLOAT>(rot), center);
+        // 4) Rotation around the same center
+        m_d2dContext->SetTransform(
+            D2D1::Matrix3x2F::Rotation(static_cast<FLOAT>(rot), center));
 
-        m_d2dContext->SetTransform(transform);
-
-        // Bitmap drawn in unswapped size, centered on same center
-        const float bw = size.width * scale;
-        const float bh = size.height * scale;
-        D2D1_RECT_F dest = D2D1::RectF(
+        // Draw bitmap in unswapped pixel size, centered
+        const float bw = bmpSize.width * scale;
+        const float bh = bmpSize.height * scale;
+        const D2D1_RECT_F dest = D2D1::RectF(
             center.x - bw * 0.5f,
             center.y - bh * 0.5f,
             center.x + bw * 0.5f,
@@ -317,11 +339,9 @@ void CVideoView::OnDraw(CDC* /*pDC*/)
 
         m_d2dContext->DrawBitmap(m_frameBitmap.Get(), dest);
 
+        // Reset transform
         m_d2dContext->SetTransform(D2D1::Matrix3x2F::Identity());
     }
-
-    // Frame text overlay
-    // (optional for now — can add DirectWrite later)
 
     HRESULT hr = m_d2dContext->EndDraw();
     if (hr == D2DERR_RECREATE_TARGET)
@@ -330,7 +350,8 @@ void CVideoView::OnDraw(CDC* /*pDC*/)
         return;
     }
 
-    m_swapChain->Present(1, 0);
+    if (m_swapChain)
+        m_swapChain->Present(1, 0);
 }
 
 void CVideoView::OnInitialUpdate()
@@ -353,6 +374,11 @@ BOOL CVideoView::PreTranslateMessage(MSG* pMsg)
         case VK_SPACE:
         case 'R':
         case 'r':
+        case VK_OEM_PLUS:    // '=' key (often Shift for '+')
+        case VK_ADD:         // numpad '+'
+        case VK_OEM_MINUS:   // '-' key
+        case VK_SUBTRACT:    // numpad '-'
+        case '0':
             OnKeyDown(static_cast<UINT>(pMsg->wParam), 1, 0);
             return TRUE; // handled here
         default:
@@ -388,6 +414,7 @@ void CVideoView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 
     switch (nChar)
     {
+/*
     case VK_RIGHT:
         if (m_playing)
             StopPlayback();
@@ -399,7 +426,7 @@ void CVideoView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
             StopPlayback();
         pDoc->SetCurrentFrame(pDoc->GetCurrentFrame() - (ctrl ? 10 : 1));
         break;
-
+*/
     case VK_HOME:
         if (m_playing)
             StopPlayback();
@@ -427,6 +454,81 @@ void CVideoView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
             Invalidate(FALSE);
         }
         break;
+
+// ----- Keyboard zoom / pan — extend OnKeyDown + PreTranslateMessage -----
+case VK_OEM_PLUS:
+case VK_ADD:
+    if (ctrl)
+    {
+        m_zoom *= 1.1f;
+        if (m_zoom > 32.0f) m_zoom = 32.0f;
+        ClampPan();
+        Invalidate(FALSE);
+    }
+    break;
+
+case VK_OEM_MINUS:
+case VK_SUBTRACT:
+    if (ctrl)
+    {
+        m_zoom /= 1.1f;
+        if (m_zoom < 1.0f) m_zoom = 1.0f;
+        if (m_zoom <= 1.0f) { m_panX = 0.0f; m_panY = 0.0f; }
+        ClampPan();
+        Invalidate(FALSE);
+    }
+    break;
+
+case '0':
+    if (ctrl)
+        ResetViewTransform();
+    break;
+
+case VK_LEFT:
+    if (GetKeyState(VK_SHIFT) & 0x8000)
+    {
+        m_panX += 40.0f;   // shift+left pans content right-ish / camera left
+        ClampPan();
+        Invalidate(FALSE);
+    }
+    else
+    {
+        if (m_playing) StopPlayback();
+        pDoc->SetCurrentFrame(pDoc->GetCurrentFrame() - (ctrl ? 10 : 1));
+    }
+    break;
+
+case VK_RIGHT:
+    if (GetKeyState(VK_SHIFT) & 0x8000)
+    {
+        m_panX -= 40.0f;
+        ClampPan();
+        Invalidate(FALSE);
+    }
+    else
+    {
+        if (m_playing) StopPlayback();
+        pDoc->SetCurrentFrame(pDoc->GetCurrentFrame() + (ctrl ? 10 : 1));
+    }
+    break;
+
+case VK_UP:
+    if (GetKeyState(VK_SHIFT) & 0x8000)
+    {
+        m_panY += 40.0f;
+        ClampPan();
+        Invalidate(FALSE);
+    }
+    break;
+
+case VK_DOWN:
+    if (GetKeyState(VK_SHIFT) & 0x8000)
+    {
+        m_panY -= 40.0f;
+        ClampPan();
+        Invalidate(FALSE);
+    }
+    break;
 
     default:
         CView::OnKeyDown(nChar, nRepCnt, nFlags);
@@ -507,6 +609,100 @@ void CVideoView::OnTimer(UINT_PTR nIDEvent)
 
     // Sequential +1 (smooth path inside SetCurrentFrame)
     pDoc->SetCurrentFrame(cur + 1);
+}
+
+void CVideoView::ResetViewTransform()
+{
+    m_zoom = 1.0f;
+    m_panX = 0.0f;
+    m_panY = 0.0f;
+    Invalidate(FALSE);
+}
+
+void CVideoView::ClampPan()
+{
+    // Soft clamp; keeps pan from drifting forever
+    const float limit = 4000.0f * m_zoom;
+    if (m_panX > limit) m_panX = limit;
+    if (m_panX < -limit) m_panX = -limit;
+    if (m_panY > limit) m_panY = limit;
+    if (m_panY < -limit) m_panY = -limit;
+}
+
+BOOL CVideoView::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
+{
+    CVideoDoc* pDoc = GetDocument();
+    if (!pDoc || !pDoc->HasVideo())
+        return CView::OnMouseWheel(nFlags, zDelta, pt);
+
+    ScreenToClient(&pt);
+
+    const float oldZoom = m_zoom;
+    if (zDelta > 0)
+        m_zoom *= 1.1f;
+    else
+        m_zoom /= 1.1f;
+
+    if (m_zoom < 1.0f) m_zoom = 1.0f;
+    if (m_zoom > 32.0f) m_zoom = 32.0f;
+
+    // Zoom toward cursor
+    CRect rc;
+    GetClientRect(&rc);
+    const float cx = static_cast<float>(rc.Width()) * 0.5f;
+    const float cy = static_cast<float>(rc.Height()) * 0.5f;
+    const float mx = static_cast<float>(pt.x);
+    const float my = static_cast<float>(pt.y);
+
+    const float relX = (mx - cx - m_panX) / oldZoom;
+    const float relY = (my - cy - m_panY) / oldZoom;
+
+    m_panX = mx - cx - relX * m_zoom;
+    m_panY = my - cy - relY * m_zoom;
+
+    if (m_zoom <= 1.0f)
+    {
+        m_panX = 0.0f;
+        m_panY = 0.0f;
+    }
+
+    ClampPan();
+    Invalidate(FALSE);
+    return TRUE;
+}
+
+void CVideoView::OnLButtonDown(UINT nFlags, CPoint point)
+{
+    if (m_zoom > 1.0f)
+    {
+        m_panning = true;
+        m_lastPanPoint = point;
+        SetCapture();
+    }
+    CView::OnLButtonDown(nFlags, point);
+}
+
+void CVideoView::OnLButtonUp(UINT nFlags, CPoint point)
+{
+    if (m_panning)
+    {
+        m_panning = false;
+        ReleaseCapture();
+    }
+    CView::OnLButtonUp(nFlags, point);
+}
+
+void CVideoView::OnMouseMove(UINT nFlags, CPoint point)
+{
+    if (m_panning && (nFlags & MK_LBUTTON))
+    {
+        m_panX += static_cast<float>(point.x - m_lastPanPoint.x);
+        m_panY += static_cast<float>(point.y - m_lastPanPoint.y);
+        m_lastPanPoint = point;
+        ClampPan();
+        Invalidate(FALSE);
+    }
+    CView::OnMouseMove(nFlags, point);
 }
 
 

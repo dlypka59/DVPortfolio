@@ -78,6 +78,21 @@ public:
 	virtual void OnInitialUpdate() override;
 
 protected:
+	float m_zoom = 1.0f;   // 1 = fit window
+	float m_panX = 0.0f;   // pixels in view space
+	float m_panY = 0.0f;
+
+	bool  m_panning = false;
+	CPoint m_lastPanPoint{};
+
+	void ClampPan();
+	void ResetViewTransform();
+
+	afx_msg BOOL OnMouseWheel(UINT nFlags, short zDelta, CPoint pt);
+	afx_msg void OnLButtonDown(UINT nFlags, CPoint point);
+	afx_msg void OnLButtonUp(UINT nFlags, CPoint point);
+	afx_msg void OnMouseMove(UINT nFlags, CPoint point);
+
 
 // Generated message map functions
 protected:
