@@ -34,6 +34,8 @@ BEGIN_MESSAGE_MAP(CVideoView, CView)
     ON_WM_SIZE()
     ON_WM_DESTROY()
     ON_WM_ERASEBKGND()
+    ON_WM_TIMER()
+    ON_WM_DESTROY()
 END_MESSAGE_MAP()
 
 static void RefreshStatusBar(CVideoDoc* pDoc)
@@ -84,7 +86,8 @@ int CVideoView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 void CVideoView::OnDestroy()
 {
     DiscardDeviceResources();
-    CView::OnDestroy();
+    StopPlayback();
+    CView::OnDestroy(); 
 }
 
 BOOL CVideoView::OnEraseBkgnd(CDC* /*pDC*/)
@@ -347,6 +350,7 @@ BOOL CVideoView::PreTranslateMessage(MSG* pMsg)
         case VK_RIGHT:
         case VK_UP:
         case VK_DOWN:
+        case VK_SPACE:
         case 'R':
         case 'r':
             OnKeyDown(static_cast<UINT>(pMsg->wParam), 1, 0);
@@ -385,23 +389,37 @@ void CVideoView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
     switch (nChar)
     {
     case VK_RIGHT:
+        if (m_playing)
+            StopPlayback();
         pDoc->SetCurrentFrame(pDoc->GetCurrentFrame() + (ctrl ? 10 : 1));
         break;
+
     case VK_LEFT:
+        if (m_playing)
+            StopPlayback();
         pDoc->SetCurrentFrame(pDoc->GetCurrentFrame() - (ctrl ? 10 : 1));
         break;
+
     case VK_HOME:
+        if (m_playing)
+            StopPlayback();
         pDoc->SetCurrentFrame(0);
         break;
+
     case VK_END:
+        if (m_playing)
+            StopPlayback();
         if (pDoc->GetTotalFrames() > 0)
             pDoc->SetCurrentFrame(pDoc->GetTotalFrames() - 1);
         break;
+
+    case VK_SPACE:
+        TogglePlayback();
+        break;
+
     case 'R':
     case 'r':
-    {
-        CVideoDoc* pDoc = GetDocument();
-        if (pDoc && pDoc->HasVideo() && pDoc->m_reader)
+        if (pDoc->m_reader)
         {
             UINT rot = pDoc->m_reader->GetRotationDegrees();
             rot = (rot + 90) % 360;
@@ -409,7 +427,7 @@ void CVideoView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
             Invalidate(FALSE);
         }
         break;
-    }
+
     default:
         CView::OnKeyDown(nChar, nRepCnt, nFlags);
         break;
@@ -421,6 +439,74 @@ void CVideoView::OnContextMenu(CWnd* /* pWnd */, CPoint point)
 #ifndef SHARED_HANDLERS
 	theApp.GetContextMenuManager()->ShowPopupMenu(IDR_POPUP_EDIT, point.x, point.y, this, TRUE);
 #endif
+}
+
+void CVideoView::StartPlayback()
+{
+    CVideoDoc* pDoc = GetDocument();
+    if (!pDoc || !pDoc->HasVideo())
+        return;
+
+    if (m_playing)
+        return;
+
+    double fps = pDoc->GetFrameRate();
+    if (fps <= 1.0)
+        fps = 30.0;
+
+    // Timer interval in ms (min 1 ms)
+    UINT interval = static_cast<UINT>(1000.0 / fps + 0.5);
+    if (interval < 1)
+        interval = 1;
+
+    m_playing = true;
+    SetTimer(s_playTimerId, interval, nullptr);
+}
+
+void CVideoView::StopPlayback()
+{
+    if (!m_playing)
+        return;
+
+    m_playing = false;
+    KillTimer(s_playTimerId);
+}
+
+void CVideoView::TogglePlayback()
+{
+    if (m_playing)
+        StopPlayback();
+    else
+        StartPlayback();
+}
+
+void CVideoView::OnTimer(UINT_PTR nIDEvent)
+{
+    if (nIDEvent != s_playTimerId)
+    {
+        CView::OnTimer(nIDEvent);
+        return;
+    }
+
+    CVideoDoc* pDoc = GetDocument();
+    if (!pDoc || !pDoc->HasVideo())
+    {
+        StopPlayback();
+        return;
+    }
+
+    const int64_t cur = pDoc->GetCurrentFrame();
+    const int64_t total = pDoc->GetTotalFrames();
+
+    // Stop at last frame
+    if (total > 0 && cur >= total - 1)
+    {
+        StopPlayback();
+        return;
+    }
+
+    // Sequential +1 (smooth path inside SetCurrentFrame)
+    pDoc->SetCurrentFrame(cur + 1);
 }
 
 

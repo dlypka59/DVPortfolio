@@ -51,6 +51,10 @@ public:
 
 // Operations
 public:
+	bool IsPlaying() const { return m_playing; }
+	void StartPlayback();
+	void StopPlayback();
+	void TogglePlayback();
 
 // Overrides
 public:
@@ -59,6 +63,10 @@ public:
 	virtual BOOL PreTranslateMessage(MSG* pMsg) override;
 
 protected:
+	bool m_playing = false;
+	static const UINT_PTR s_playTimerId = 1;
+
+
 
 // Implementation
 public:
@@ -73,6 +81,7 @@ protected:
 
 // Generated message map functions
 protected:
+	afx_msg void OnTimer(UINT_PTR nIDEvent);
 	afx_msg void OnFilePrintPreview();
 	afx_msg void OnRButtonUp(UINT nFlags, CPoint point);
 	afx_msg void OnContextMenu(CWnd* pWnd, CPoint point);
