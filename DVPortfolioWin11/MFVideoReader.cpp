@@ -181,6 +181,12 @@ void MFVideoReader::Close()
 
     m_pixels.clear();
     m_stride = 0;
+    m_rotationDegrees = 0;
+}
+
+void MFVideoReader::SetRotationDegrees(UINT degrees)
+{
+    m_rotationDegrees = degrees % 360;
 }
 
 bool MFVideoReader::GetVideoInfo()
@@ -207,6 +213,15 @@ bool MFVideoReader::GetVideoInfo()
         m_width = w;
         m_height = h;
     }
+
+    m_rotationDegrees = 0;
+    UINT32 rot = 0;
+    if (SUCCEEDED(mediaType->GetUINT32(MF_MT_VIDEO_ROTATION, &rot)))
+    {
+        // MF_MT_VIDEO_ROTATION is in degrees for many pipelines
+        m_rotationDegrees = rot % 360;
+    }
+
 
     PROPVARIANT var;
     PropVariantInit(&var);

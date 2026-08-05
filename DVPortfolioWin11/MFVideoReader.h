@@ -62,7 +62,12 @@ public:
     size_t GetPixelsSize() const { return m_pixels.size(); }
     UINT GetStride() const { return m_stride; }
 
+    UINT GetRotationDegrees() const { return m_rotationDegrees; }
+    void SetRotationDegrees(UINT degrees);  // 0, 90, 180, 270
+
 private:
+    UINT m_rotationDegrees = 0;
+
     bool CreateD3DManager();
     bool SelectVideoStream();
     bool GetVideoInfo();

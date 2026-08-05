@@ -261,14 +261,42 @@ void CVideoView::OnDraw(CDC* /*pDC*/)
         CRect rc;
         GetClientRect(&rc);
 
-        float scale = std::min(rc.Width() / size.width, rc.Height() / size.height);
-        float dw = size.width * scale;
-        float dh = size.height * scale;
-        float ox = (rc.Width() - dw) * 0.5f;
-        float oy = (rc.Height() - dh) * 0.5f;
+        UINT rot = 0;
+        if (doc && doc->HasVideo() && doc->m_reader)
+            rot = doc->m_reader->GetRotationDegrees();
 
-        D2D1_RECT_F dest = D2D1::RectF(ox, oy, ox + dw, oy + dh);
+        const bool swapWH = (rot == 90 || rot == 270);
+        const float srcW = swapWH ? size.height : size.width;
+        const float srcH = swapWH ? size.width : size.height;
+
+        const float sx = rc.Width() / srcW;
+        const float sy = rc.Height() / srcH;
+        const float scale = (sx < sy) ? sx : sy;
+
+        const float dw = srcW * scale;
+        const float dh = srcH * scale;
+        const float ox = (rc.Width() - dw) * 0.5f;
+        const float oy = (rc.Height() - dh) * 0.5f;
+
+        D2D1_POINT_2F center = D2D1::Point2F(ox + dw * 0.5f, oy + dh * 0.5f);
+
+        D2D1_MATRIX_3X2_F transform =
+            D2D1::Matrix3x2F::Rotation(static_cast<FLOAT>(rot), center);
+
+        m_d2dContext->SetTransform(transform);
+
+        // Bitmap drawn in unswapped size, centered on same center
+        const float bw = size.width * scale;
+        const float bh = size.height * scale;
+        D2D1_RECT_F dest = D2D1::RectF(
+            center.x - bw * 0.5f,
+            center.y - bh * 0.5f,
+            center.x + bw * 0.5f,
+            center.y + bh * 0.5f);
+
         m_d2dContext->DrawBitmap(m_frameBitmap.Get(), dest);
+
+        m_d2dContext->SetTransform(D2D1::Matrix3x2F::Identity());
     }
 
     // Frame text overlay
@@ -300,8 +328,10 @@ BOOL CVideoView::PreTranslateMessage(MSG* pMsg)
         case VK_RIGHT:
         case VK_UP:
         case VK_DOWN:
+        case 'R':
+        case 'r':
             OnKeyDown(static_cast<UINT>(pMsg->wParam), 1, 0);
-            return TRUE; // we handled it
+            return TRUE; // handled here
         default:
             break;
         }
@@ -342,6 +372,19 @@ void CVideoView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
         if (pDoc->GetTotalFrames() > 0)
             pDoc->SetCurrentFrame(pDoc->GetTotalFrames() - 1);
         break;
+    case 'R':
+    case 'r':
+    {
+        CVideoDoc* pDoc = GetDocument();
+        if (pDoc && pDoc->HasVideo() && pDoc->m_reader)
+        {
+            UINT rot = pDoc->m_reader->GetRotationDegrees();
+            rot = (rot + 90) % 360;
+            pDoc->m_reader->SetRotationDegrees(rot);
+            Invalidate(FALSE);
+        }
+        break;
+    }
     default:
         CView::OnKeyDown(nChar, nRepCnt, nFlags);
         break;
