@@ -10,6 +10,7 @@
 #include "DVPortfolioWin11.h"
 #endif
 
+#include "MainFrm.h"
 #include "VideoDoc.h"
 #include "VideoView.h"
 
@@ -35,6 +36,21 @@ BEGIN_MESSAGE_MAP(CVideoView, CView)
     ON_WM_ERASEBKGND()
 END_MESSAGE_MAP()
 
+static void RefreshStatusBar(CVideoDoc* pDoc)
+{
+    if (!pDoc || !pDoc->HasVideo())
+        return;
+
+    auto* pMain = dynamic_cast<CMainFrame*>(AfxGetMainWnd());
+    if (!pMain)
+        return;
+
+    pMain->UpdateVideoStatus(
+        pDoc->GetCurrentFrame(),
+        pDoc->GetTotalFrames(),
+        pDoc->GetFrameRate());
+}
+
 // CVideoView construction/destruction
 
 CVideoView::CVideoView() noexcept
@@ -46,6 +62,8 @@ CVideoView::CVideoView() noexcept
 CVideoView::~CVideoView()
 {
 }
+
+
 
 BOOL CVideoView::PreCreateWindow(CREATESTRUCT& cs)
 {
@@ -316,6 +334,7 @@ void CVideoView::OnInitialUpdate()
 {
     CView::OnInitialUpdate();
     SetFocus();
+    RefreshStatusBar(GetDocument());
 }
 
 BOOL CVideoView::PreTranslateMessage(MSG* pMsg)
@@ -338,6 +357,12 @@ BOOL CVideoView::PreTranslateMessage(MSG* pMsg)
     }
 
     return CView::PreTranslateMessage(pMsg);
+}
+
+void CVideoView::OnUpdate(CView* /*pSender*/, LPARAM /*lHint*/, CObject* /*pHint*/)
+{
+    RefreshStatusBar(GetDocument());
+    Invalidate(FALSE);
 }
 
 void CVideoView::OnRButtonUp(UINT /* nFlags */, CPoint point)

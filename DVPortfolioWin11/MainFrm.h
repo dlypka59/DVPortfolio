@@ -12,9 +12,11 @@ public:
 
 // Attributes
 public:
+	static const UINT m_statusPaneIds[3];
 
 // Operations
 public:
+	void UpdateVideoStatus(int64_t frame, int64_t totalFrames, double fps);
 
 // Overrides
 public:

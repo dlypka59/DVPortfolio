@@ -47,6 +47,8 @@ protected: // create from serialization only
 public:
 	CVideoDoc* GetDocument() const;
 
+	virtual void OnUpdate(CView* pSender, LPARAM lHint, CObject* pHint) override;
+
 // Operations
 public:
 

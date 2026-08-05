@@ -8,6 +8,7 @@
 
 #include "MainFrm.h"
 
+
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
@@ -19,6 +20,13 @@ IMPLEMENT_DYNAMIC(CMainFrame, CMDIFrameWndEx)
 const int  iMaxUserToolbars = 10;
 const UINT uiFirstUserToolBarId = AFX_IDW_CONTROLBAR_FIRST + 40;
 const UINT uiLastUserToolBarId = uiFirstUserToolBarId + iMaxUserToolbars - 1;
+
+const UINT CMainFrame::m_statusPaneIds[3] =
+{
+	ID_SEPARATOR,   // existing message pane
+	ID_SEPARATOR,   // frame pane
+	ID_SEPARATOR    // timecode pane
+};
 
 BEGIN_MESSAGE_MAP(CMainFrame, CMDIFrameWndEx)
 	ON_WM_CREATE()
@@ -62,6 +70,32 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 		return -1;      // fail to create
 	}
 
+	if (!m_wndStatusBar.Create(this))
+	{
+		TRACE0("Failed to create status bar\n");
+		return -1;
+	}
+
+	static UINT indicators[3] =
+	{
+		ID_SEPARATOR,   // stretchy message area
+		ID_SEPARATOR,   // frame
+		ID_SEPARATOR    // timecode
+	};
+
+	if (!m_wndStatusBar.SetIndicators(indicators, 3))
+	{
+		TRACE0("Failed to set status bar indicators\n");
+		return -1;
+	}
+
+	m_wndStatusBar.SetPaneInfo(0, ID_SEPARATOR, SBPS_STRETCH, 1);
+	m_wndStatusBar.SetPaneInfo(1, ID_SEPARATOR, SBPS_NORMAL, 160);
+	m_wndStatusBar.SetPaneInfo(2, ID_SEPARATOR, SBPS_NORMAL, 140);
+
+	m_wndStatusBar.SetPaneText(1, _T("Frame —"));
+	m_wndStatusBar.SetPaneText(2, _T("00:00:00@00"));
+
 	m_wndMenuBar.SetPaneStyle(m_wndMenuBar.GetPaneStyle() | CBRS_SIZE_DYNAMIC | CBRS_TOOLTIPS | CBRS_FLYBY);
 
 	// prevent the menu bar from taking the focus on activation
@@ -86,13 +120,6 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 
 	// Allow user-defined toolbars operations:
 	InitUserToolbars(nullptr, uiFirstUserToolBarId, uiLastUserToolBarId);
-
-	if (!m_wndStatusBar.Create(this))
-	{
-		TRACE0("Failed to create status bar\n");
-		return -1;      // fail to create
-	}
-	m_wndStatusBar.SetIndicators(indicators, sizeof(indicators)/sizeof(UINT));
 
 	// TODO: Delete these five lines if you don't want the toolbar and menubar to be dockable
 	m_wndMenuBar.EnableDocking(CBRS_ALIGN_ANY);
@@ -162,6 +189,32 @@ BOOL CMainFrame::PreCreateWindow(CREATESTRUCT& cs)
 	//  the CREATESTRUCT cs
 
 	return TRUE;
+}
+
+
+void CMainFrame::UpdateVideoStatus(int64_t frame, int64_t totalFrames, double fps)
+{
+	CString frameText;
+	if (totalFrames > 0)
+		frameText.Format(_T("Frame %lld / %lld"), frame, totalFrames);
+	else
+		frameText.Format(_T("Frame %lld"), frame);
+
+	CString timeText = _T("00:00:00@00");
+	if (fps > 0.0 && frame >= 0)
+	{
+		const double seconds = static_cast<double>(frame) / fps;
+		const int h = static_cast<int>(seconds) / 3600;
+		const int m = (static_cast<int>(seconds) % 3600) / 60;
+		const int s = static_cast<int>(seconds) % 60;
+		int ff = static_cast<int>(frame % static_cast<int64_t>(fps + 0.5));
+		if (ff < 0) ff = 0;
+
+		timeText.Format(_T("%02d:%02d:%02d@%02d"), h, m, s, ff);
+	}
+
+	m_wndStatusBar.SetPaneText(1, frameText);
+	m_wndStatusBar.SetPaneText(2, timeText);
 }
 
 // CMainFrame diagnostics
