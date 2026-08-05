@@ -1,138 +1,129 @@
-
-// VideoDoc.cpp : implementation of the CVideoDoc class
-//
-
 #include "pch.h"
-#include "framework.h"
-// SHARED_HANDLERS can be defined in an ATL project implementing preview, thumbnail
-// and search filter handlers and allows sharing of document code with that project.
-#ifndef SHARED_HANDLERS
 #include "DVPortfolioWin11.h"
-#endif
-
 #include "VideoDoc.h"
-
-#include <propkey.h>
+#include "VideoView.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
-
-// CVideoDoc
 
 IMPLEMENT_DYNCREATE(CVideoDoc, CDocument)
 
 BEGIN_MESSAGE_MAP(CVideoDoc, CDocument)
 END_MESSAGE_MAP()
 
-
-// CVideoDoc construction/destruction
-
 CVideoDoc::CVideoDoc() noexcept
-{
-	// TODO: add one-time construction code here
-
-}
+{}
 
 CVideoDoc::~CVideoDoc()
 {
+    m_reader.reset();
+}
+
+int64_t CVideoDoc::GetCurrentFrame() const
+{
+    if (m_reader && m_reader->IsOpen())
+        return m_reader->GetCurrentFrame();
+    return 0;
+}
+
+int64_t CVideoDoc::GetTotalFrames() const
+{
+    if (m_reader && m_reader->IsOpen())
+        return m_reader->GetTotalFrames();
+    return 0;
+}
+
+double CVideoDoc::GetFrameRate() const
+{
+    if (m_reader && m_reader->IsOpen())
+        return m_reader->GetFrameRate();
+    return 0.0;
+}
+
+void CVideoDoc::SetCurrentFrame(int64_t frame)
+{
+    if (!m_reader || !m_reader->IsOpen())
+        return;
+
+    if (frame < 0)
+        frame = 0;
+
+    const int64_t total = m_reader->GetTotalFrames();
+    if (total > 0 && frame >= total)
+        frame = total - 1;
+
+    const int64_t current = m_reader->GetCurrentFrame();
+    if (frame == current)
+        return;
+
+    // Forward 1: smooth sequential decode (no seek)
+    if (frame == current + 1)
+    {
+        if (m_reader->ReadCurrentFrame())
+            UpdateAllViews(nullptr);
+        return;
+    }
+
+    // Backward or jump: seek + decode forward to exact frame
+    if (m_reader->DecodeToFrame(frame))
+        UpdateAllViews(nullptr);
 }
 
 BOOL CVideoDoc::OnNewDocument()
 {
-	if (!CDocument::OnNewDocument())
-		return FALSE;
+    if (!CDocument::OnNewDocument())
+        return FALSE;
 
-	// TODO: add reinitialization code here
-	// (SDI documents will reuse this document)
-
-	return TRUE;
+    m_reader.reset();
+    return TRUE;
 }
 
-
-
-
-// CVideoDoc serialization
-
-void CVideoDoc::Serialize(CArchive& ar)
+BOOL CVideoDoc::OnOpenDocument(LPCTSTR lpszPathName)
 {
-	if (ar.IsStoring())
-	{
-		// TODO: add storing code here
-	}
-	else
-	{
-		// TODO: add loading code here
-	}
+    m_reader = std::make_unique<MFVideoReader>();
+
+    std::wstring path(lpszPathName);
+    if (!m_reader->Open(path))
+    {
+        m_reader.reset();
+        AfxMessageBox(_T("Failed to open video with Media Foundation."), MB_ICONERROR);
+        return FALSE;
+    }
+
+    // Load first frame
+    //m_reader->ReadCurrentFrame();
+
+    if (m_reader->ReadCurrentFrame())
+    {
+        CString msg;
+        msg.Format(_T("Open OK\n%u x %u\npixels=%u stride=%u"),
+            m_reader->GetWidth(),
+            m_reader->GetHeight(),
+            (unsigned)m_reader->GetPixelsSize(),
+            m_reader->GetStride());
+        AfxMessageBox(msg);
+    }
+
+    SetPathName(lpszPathName, TRUE);
+    SetModifiedFlag(FALSE);
+    return TRUE;
 }
 
-#ifdef SHARED_HANDLERS
-
-// Support for thumbnails
-void CVideoDoc::OnDrawThumbnail(CDC& dc, LPRECT lprcBounds)
+void CVideoDoc::OnCloseDocument()
 {
-	// Modify this code to draw the document's data
-	dc.FillSolidRect(lprcBounds, RGB(255, 255, 255));
-
-	CString strText = _T("TODO: implement thumbnail drawing here");
-	LOGFONT lf;
-
-	CFont* pDefaultGUIFont = CFont::FromHandle((HFONT) GetStockObject(DEFAULT_GUI_FONT));
-	pDefaultGUIFont->GetLogFont(&lf);
-	lf.lfHeight = 36;
-
-	CFont fontDraw;
-	fontDraw.CreateFontIndirect(&lf);
-
-	CFont* pOldFont = dc.SelectObject(&fontDraw);
-	dc.DrawText(strText, lprcBounds, DT_CENTER | DT_WORDBREAK);
-	dc.SelectObject(pOldFont);
+    m_reader.reset();
+    CDocument::OnCloseDocument();
 }
-
-// Support for Search Handlers
-void CVideoDoc::InitializeSearchContent()
-{
-	CString strSearchContent;
-	// Set search contents from document's data.
-	// The content parts should be separated by ";"
-
-	// For example:  strSearchContent = _T("point;rectangle;circle;ole object;");
-	SetSearchContent(strSearchContent);
-}
-
-void CVideoDoc::SetSearchContent(const CString& value)
-{
-	if (value.IsEmpty())
-	{
-		RemoveChunk(PKEY_Search_Contents.fmtid, PKEY_Search_Contents.pid);
-	}
-	else
-	{
-		CMFCFilterChunkValueImpl *pChunk = nullptr;
-		ATLTRY(pChunk = new CMFCFilterChunkValueImpl);
-		if (pChunk != nullptr)
-		{
-			pChunk->SetTextValue(PKEY_Search_Contents, value, CHUNK_TEXT);
-			SetChunkValue(pChunk);
-		}
-	}
-}
-
-#endif // SHARED_HANDLERS
-
-// CVideoDoc diagnostics
 
 #ifdef _DEBUG
 void CVideoDoc::AssertValid() const
 {
-	CDocument::AssertValid();
+    CDocument::AssertValid();
 }
 
 void CVideoDoc::Dump(CDumpContext& dc) const
 {
-	CDocument::Dump(dc);
+    CDocument::Dump(dc);
 }
-#endif //_DEBUG
-
-
-// CVideoDoc commands
+#endif

@@ -13,6 +13,8 @@
 #include "VideoDoc.h"
 #include "VideoView.h"
 
+#include <mfapi.h>
+
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
@@ -112,6 +114,13 @@ BOOL CDVPortfolioWin11App::InitInstance()
 		return FALSE;
 	AddDocTemplate(pDocTemplate);
 
+	HRESULT hrMF = MFStartup(MF_VERSION);
+	if (FAILED(hrMF))
+	{
+		AfxMessageBox(_T("Media Foundation failed to start."), MB_ICONERROR);
+		return FALSE;
+	}
+
 	// create main MDI Frame window
 	CMainFrame* pMainFrame = new CMainFrame;
 	if (!pMainFrame || !pMainFrame->LoadFrame(IDR_MAINFRAME))
@@ -142,6 +151,7 @@ BOOL CDVPortfolioWin11App::InitInstance()
 int CDVPortfolioWin11App::ExitInstance()
 {
 	//TODO: handle additional resources you may have added
+	MFShutdown();
 	return CWinAppEx::ExitInstance();
 }
 

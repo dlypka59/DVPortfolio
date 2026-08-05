@@ -1,48 +1,36 @@
-
-// VideoDoc.h : interface of the CVideoDoc class
-//
-
-
 #pragma once
 
+#include "MFVideoReader.h"
+#include <memory>
+#include <cstdint>
 
 class CVideoDoc : public CDocument
 {
 protected: // create from serialization only
-	CVideoDoc() noexcept;
-	DECLARE_DYNCREATE(CVideoDoc)
+    CVideoDoc() noexcept;
+    DECLARE_DYNCREATE(CVideoDoc)
 
-// Attributes
 public:
+    virtual ~CVideoDoc();
+    std::unique_ptr<MFVideoReader> m_reader;
 
-// Operations
-public:
+    bool HasVideo() const { return m_reader && m_reader->IsOpen(); }
+    int64_t GetCurrentFrame() const;
+    int64_t GetTotalFrames() const;
+    double  GetFrameRate() const;
 
-// Overrides
-public:
-	virtual BOOL OnNewDocument();
-	virtual void Serialize(CArchive& ar);
-#ifdef SHARED_HANDLERS
-	virtual void InitializeSearchContent();
-	virtual void OnDrawThumbnail(CDC& dc, LPRECT lprcBounds);
-#endif // SHARED_HANDLERS
+    void SetCurrentFrame(int64_t frame);
 
-// Implementation
+    // Overrides
 public:
-	virtual ~CVideoDoc();
+    virtual BOOL OnNewDocument() override;
+    virtual BOOL OnOpenDocument(LPCTSTR lpszPathName) override;
+    virtual void OnCloseDocument() override;
 #ifdef _DEBUG
-	virtual void AssertValid() const;
-	virtual void Dump(CDumpContext& dc) const;
+    virtual void AssertValid() const override;
+    virtual void Dump(CDumpContext& dc) const override;
 #endif
 
 protected:
-
-// Generated message map functions
-protected:
-	DECLARE_MESSAGE_MAP()
-
-#ifdef SHARED_HANDLERS
-	// Helper function that sets search content for a Search Handler
-	void SetSearchContent(const CString& value);
-#endif // SHARED_HANDLERS
+    DECLARE_MESSAGE_MAP()
 };
