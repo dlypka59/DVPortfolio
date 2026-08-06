@@ -42,9 +42,57 @@ BEGIN_MESSAGE_MAP(CVideoView, CView)
     ON_WM_MOUSEMOVE()
 END_MESSAGE_MAP()
 
-static void RefreshStatusBar(CVideoDoc* pDoc)
+
+int64_t CVideoView::GetCurrentFrame() const
 {
-    if (!pDoc || !pDoc->HasVideo())
+    return HasVideo() ? m_reader->GetCurrentFrame() : 0;
+}
+
+int64_t CVideoView::GetTotalFrames() const
+{
+    return HasVideo() ? m_reader->GetTotalFrames() : 0;
+}
+
+double CVideoView::GetFrameRate() const
+{
+    return HasVideo() ? m_reader->GetFrameRate() : 0.0;
+}
+
+void CVideoView::SetCurrentFrame(int64_t frame)
+{
+    if (!HasVideo())
+        return;
+
+    if (frame < 0)
+        frame = 0;
+    const int64_t total = m_reader->GetTotalFrames();
+    if (total > 0 && frame >= total)
+        frame = total - 1;
+
+    const int64_t current = m_reader->GetCurrentFrame();
+    if (frame == current)
+        return;
+
+    if (frame == current + 1)
+    {
+        if (m_reader->ReadCurrentFrame())
+        {
+            RefreshStatusBarForThisView();
+            Invalidate(FALSE);
+        }
+        return;
+    }
+
+    if (m_reader->DecodeToFrame(frame))
+    {
+        RefreshStatusBarForThisView();
+        Invalidate(FALSE);
+    }
+}
+
+void CVideoView::RefreshStatusBarForThisView()
+{
+    if (!HasVideo())
         return;
 
     auto* pMain = dynamic_cast<CMainFrame*>(AfxGetMainWnd());
@@ -52,9 +100,9 @@ static void RefreshStatusBar(CVideoDoc* pDoc)
         return;
 
     pMain->UpdateVideoStatus(
-        pDoc->GetCurrentFrame(),
-        pDoc->GetTotalFrames(),
-        pDoc->GetFrameRate());
+        GetCurrentFrame(),
+        GetTotalFrames(),
+        GetFrameRate());
 }
 
 // CVideoView construction/destruction
@@ -233,17 +281,15 @@ void CVideoView::OnSize(UINT nType, int cx, int cy)
 
 bool CVideoView::CreateFrameBitmap()
 {
-    CVideoDoc* doc = GetDocument();
-    if (!doc || !doc->HasVideo() || !m_d2dContext)
+    if (!HasVideo() || !m_d2dContext)
         return false;
 
-    auto* reader = doc->m_reader.get();
-    if (!reader || !reader->GetPixels())
+    if (!m_reader->GetPixels())
         return false;
 
-    const UINT w = reader->GetWidth();
-    const UINT h = reader->GetHeight();
-    const UINT stride = reader->GetStride();
+    const UINT w = m_reader->GetWidth();
+    const UINT h = m_reader->GetHeight();
+    const UINT stride = m_reader->GetStride();
     if (w == 0 || h == 0 || stride < w * 4)
         return false;
 
@@ -253,7 +299,6 @@ bool CVideoView::CreateFrameBitmap()
         D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE),
         96.0f, 96.0f);
 
-    // 1) Create an empty bitmap with the correct size
     HRESULT hr = m_d2dContext->CreateBitmap(
         D2D1::SizeU(w, h),
         nullptr,
@@ -264,8 +309,7 @@ bool CVideoView::CreateFrameBitmap()
     if (FAILED(hr) || !m_frameBitmap)
         return false;
 
-    // 2) Copy the pixel bytes into that bitmap
-    hr = m_frameBitmap->CopyFromMemory(nullptr, reader->GetPixels(), stride);
+    hr = m_frameBitmap->CopyFromMemory(nullptr, m_reader->GetPixels(), stride);
     return SUCCEEDED(hr);
 }
 
@@ -284,8 +328,7 @@ void CVideoView::OnDraw(CDC* /*pDC*/)
             return;
     }
 
-    CVideoDoc* doc = GetDocument();
-    if (doc && doc->HasVideo())
+    if (HasVideo())
         CreateFrameBitmap();
 
     m_d2dContext->BeginDraw();
@@ -296,14 +339,13 @@ void CVideoView::OnDraw(CDC* /*pDC*/)
         D2D1_SIZE_F bmpSize = m_frameBitmap->GetSize();
 
         UINT rot = 0;
-        if (doc && doc->HasVideo() && doc->m_reader)
-            rot = doc->m_reader->GetRotationDegrees();
+        if (m_reader)
+            rot = m_reader->GetRotationDegrees();
 
         const bool swapWH = (rot == 90 || rot == 270);
         const float srcW = swapWH ? bmpSize.height : bmpSize.width;
         const float srcH = swapWH ? bmpSize.width : bmpSize.height;
 
-        // 1) Fit-to-window scale
         float fit = 1.0f;
         if (srcW > 0.f && srcH > 0.f)
         {
@@ -312,11 +354,9 @@ void CVideoView::OnDraw(CDC* /*pDC*/)
             fit = (sx < sy) ? sx : sy;
         }
 
-        // 2) Apply user zoom
         const float z = (m_zoom < 1.0f) ? 1.0f : m_zoom;
         const float scale = fit * z;
 
-        // 3) Center + pan
         const float dw = srcW * scale;
         const float dh = srcH * scale;
         const float ox = (static_cast<float>(rc.Width()) - dw) * 0.5f + m_panX;
@@ -324,11 +364,9 @@ void CVideoView::OnDraw(CDC* /*pDC*/)
 
         const D2D1_POINT_2F center = D2D1::Point2F(ox + dw * 0.5f, oy + dh * 0.5f);
 
-        // 4) Rotation around the same center
         m_d2dContext->SetTransform(
             D2D1::Matrix3x2F::Rotation(static_cast<FLOAT>(rot), center));
 
-        // Draw bitmap in unswapped pixel size, centered
         const float bw = bmpSize.width * scale;
         const float bh = bmpSize.height * scale;
         const D2D1_RECT_F dest = D2D1::RectF(
@@ -338,8 +376,6 @@ void CVideoView::OnDraw(CDC* /*pDC*/)
             center.y + bh * 0.5f);
 
         m_d2dContext->DrawBitmap(m_frameBitmap.Get(), dest);
-
-        // Reset transform
         m_d2dContext->SetTransform(D2D1::Matrix3x2F::Identity());
     }
 
@@ -357,8 +393,33 @@ void CVideoView::OnDraw(CDC* /*pDC*/)
 void CVideoView::OnInitialUpdate()
 {
     CView::OnInitialUpdate();
+
+    m_reader.reset();
+    ResetViewTransform();
+    StopPlayback();
+
+    CVideoDoc* pDoc = GetDocument();
+    if (pDoc)
+    {
+        const CString path = pDoc->GetPathName();
+        if (!path.IsEmpty())
+        {
+            m_reader = std::make_unique<MFVideoReader>();
+            if (!m_reader->Open(std::wstring(path)))
+            {
+                m_reader.reset();
+                AfxMessageBox(_T("Failed to open video in this view."), MB_ICONERROR);
+            }
+            else
+            {
+                m_reader->ReadCurrentFrame();
+            }
+        }
+    }
+
     SetFocus();
-    RefreshStatusBar(GetDocument());
+    RefreshStatusBarForThisView();
+    Invalidate(FALSE);
 }
 
 BOOL CVideoView::PreTranslateMessage(MSG* pMsg)
@@ -391,7 +452,7 @@ BOOL CVideoView::PreTranslateMessage(MSG* pMsg)
 
 void CVideoView::OnUpdate(CView* /*pSender*/, LPARAM /*lHint*/, CObject* /*pHint*/)
 {
-    RefreshStatusBar(GetDocument());
+    RefreshStatusBarForThisView();
     Invalidate(FALSE);
 }
 
@@ -404,7 +465,7 @@ void CVideoView::OnRButtonUp(UINT /* nFlags */, CPoint point)
 void CVideoView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 {
     CVideoDoc* pDoc = GetDocument();
-    if (!pDoc || !pDoc->HasVideo())
+    if (!pDoc || !HasVideo())
     {
         CView::OnKeyDown(nChar, nRepCnt, nFlags);
         return;
@@ -418,26 +479,26 @@ void CVideoView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
     case VK_RIGHT:
         if (m_playing)
             StopPlayback();
-        pDoc->SetCurrentFrame(pDoc->GetCurrentFrame() + (ctrl ? 10 : 1));
+        SetCurrentFrame(GetCurrentFrame() + (ctrl ? 10 : 1));
         break;
 
     case VK_LEFT:
         if (m_playing)
             StopPlayback();
-        pDoc->SetCurrentFrame(pDoc->GetCurrentFrame() - (ctrl ? 10 : 1));
+        SetCurrentFrame(GetCurrentFrame() - (ctrl ? 10 : 1));
         break;
 */
     case VK_HOME:
         if (m_playing)
             StopPlayback();
-        pDoc->SetCurrentFrame(0);
+        SetCurrentFrame(0);
         break;
 
     case VK_END:
         if (m_playing)
             StopPlayback();
-        if (pDoc->GetTotalFrames() > 0)
-            pDoc->SetCurrentFrame(pDoc->GetTotalFrames() - 1);
+        if (GetTotalFrames() > 0)
+            SetCurrentFrame(GetTotalFrames() - 1);
         break;
 
     case VK_SPACE:
@@ -446,11 +507,11 @@ void CVideoView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 
     case 'R':
     case 'r':
-        if (pDoc->m_reader)
+        if (m_reader)
         {
-            UINT rot = pDoc->m_reader->GetRotationDegrees();
+            UINT rot = m_reader->GetRotationDegrees();
             rot = (rot + 90) % 360;
-            pDoc->m_reader->SetRotationDegrees(rot);
+            m_reader->SetRotationDegrees(rot);
             Invalidate(FALSE);
         }
         break;
@@ -494,7 +555,7 @@ case VK_LEFT:
     else
     {
         if (m_playing) StopPlayback();
-        pDoc->SetCurrentFrame(pDoc->GetCurrentFrame() - (ctrl ? 10 : 1));
+        SetCurrentFrame(GetCurrentFrame() - (ctrl ? 10 : 1));
     }
     break;
 
@@ -508,7 +569,7 @@ case VK_RIGHT:
     else
     {
         if (m_playing) StopPlayback();
-        pDoc->SetCurrentFrame(pDoc->GetCurrentFrame() + (ctrl ? 10 : 1));
+        SetCurrentFrame(GetCurrentFrame() + (ctrl ? 10 : 1));
     }
     break;
 
@@ -546,13 +607,13 @@ void CVideoView::OnContextMenu(CWnd* /* pWnd */, CPoint point)
 void CVideoView::StartPlayback()
 {
     CVideoDoc* pDoc = GetDocument();
-    if (!pDoc || !pDoc->HasVideo())
+    if (!pDoc || !HasVideo())
         return;
 
     if (m_playing)
         return;
 
-    double fps = pDoc->GetFrameRate();
+    double fps = GetFrameRate();
     if (fps <= 1.0)
         fps = 30.0;
 
@@ -591,14 +652,14 @@ void CVideoView::OnTimer(UINT_PTR nIDEvent)
     }
 
     CVideoDoc* pDoc = GetDocument();
-    if (!pDoc || !pDoc->HasVideo())
+    if (!pDoc || !HasVideo())
     {
         StopPlayback();
         return;
     }
 
-    const int64_t cur = pDoc->GetCurrentFrame();
-    const int64_t total = pDoc->GetTotalFrames();
+    const int64_t cur = GetCurrentFrame();
+    const int64_t total = GetTotalFrames();
 
     // Stop at last frame
     if (total > 0 && cur >= total - 1)
@@ -608,7 +669,7 @@ void CVideoView::OnTimer(UINT_PTR nIDEvent)
     }
 
     // Sequential +1 (smooth path inside SetCurrentFrame)
-    pDoc->SetCurrentFrame(cur + 1);
+    SetCurrentFrame(cur + 1);
 }
 
 void CVideoView::ResetViewTransform()
@@ -632,7 +693,7 @@ void CVideoView::ClampPan()
 BOOL CVideoView::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
 {
     CVideoDoc* pDoc = GetDocument();
-    if (!pDoc || !pDoc->HasVideo())
+    if (!pDoc || !HasVideo())
         return CView::OnMouseWheel(nFlags, zDelta, pt);
 
     ScreenToClient(&pt);

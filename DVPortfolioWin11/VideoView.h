@@ -5,14 +5,17 @@
 #pragma once
 
 #include <afxwin.h>
-
 #include <d2d1.h>
 #include <d2d1_1.h>
 #include <dxgi1_2.h>
 #include <d3d11.h>
 #include <wrl/client.h>
-
 #include <algorithm>
+#include <memory>
+
+#include "MFVideoReader.h"
+
+class CVideoDoc;
 
 using Microsoft::WRL::ComPtr;
 
@@ -66,8 +69,6 @@ protected:
 	bool m_playing = false;
 	static const UINT_PTR s_playTimerId = 1;
 
-
-
 // Implementation
 public:
 	virtual ~CVideoView();
@@ -76,6 +77,15 @@ public:
 	virtual void Dump(CDumpContext& dc) const;
 #endif
 	virtual void OnInitialUpdate() override;
+
+	std::unique_ptr<MFVideoReader> m_reader;
+
+	bool HasVideo() const { return m_reader && m_reader->IsOpen(); }
+	int64_t GetCurrentFrame() const;
+	int64_t GetTotalFrames() const;
+	double  GetFrameRate() const;
+	void SetCurrentFrame(int64_t frame);
+	void RefreshStatusBarForThisView();
 
 protected:
 	float m_zoom = 1.0f;   // 1 = fit window

@@ -12,9 +12,8 @@ protected: // create from serialization only
 
 public:
     virtual ~CVideoDoc();
-    std::unique_ptr<MFVideoReader> m_reader;
 
-    bool HasVideo() const { return m_reader && m_reader->IsOpen(); }
+    BOOL HasVideoPath() const { return !GetPathName().IsEmpty(); }
     int64_t GetCurrentFrame() const;
     int64_t GetTotalFrames() const;
     double  GetFrameRate() const;
