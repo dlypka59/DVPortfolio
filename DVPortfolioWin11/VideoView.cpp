@@ -92,17 +92,40 @@ void CVideoView::SetCurrentFrame(int64_t frame)
 
 void CVideoView::RefreshStatusBarForThisView()
 {
+    if (!m_viewStatus.GetSafeHwnd())
+        return;
+
+    CString text;
     if (!HasVideo())
-        return;
+    {
+        text = _T("No video");
+    }
+    else
+    {
+        const int64_t frame = GetCurrentFrame();
+        const int64_t total = GetTotalFrames();
+        const double fps = GetFrameRate();
 
-    auto* pMain = dynamic_cast<CMainFrame*>(AfxGetMainWnd());
-    if (!pMain)
-        return;
+        CString timeText = _T("00:00:00@00");
+        if (fps > 0.0 && frame >= 0)
+        {
+            const double seconds = static_cast<double>(frame) / fps;
+            const int h = static_cast<int>(seconds) / 3600;
+            const int m = (static_cast<int>(seconds) % 3600) / 60;
+            const int s = static_cast<int>(seconds) % 60;
+            int ff = static_cast<int>(frame % static_cast<int64_t>(fps + 0.5));
+            if (ff < 0) ff = 0;
+            timeText.Format(_T("%02d:%02d:%02d@%02d"), h, m, s, ff);
+        }
 
-    pMain->UpdateVideoStatus(
-        GetCurrentFrame(),
-        GetTotalFrames(),
-        GetFrameRate());
+        if (total > 0)
+            text.Format(_T("Frame %lld / %lld    %s    %.3f fps"),
+                frame, total, timeText.GetString(), fps);
+        else
+            text.Format(_T("Frame %lld    %s"), frame, timeText.GetString());
+    }
+
+    m_viewStatus.SetWindowText(text);
 }
 
 // CVideoView construction/destruction
@@ -131,7 +154,24 @@ int CVideoView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 {
     if (CView::OnCreate(lpCreateStruct) == -1)
         return -1;
-    CreateDeviceResources();
+
+    if (!m_viewStatus.Create(
+        _T("No video"),
+        WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
+        CRect(0, 0, 0, 0),
+        this,
+        1))
+    {
+        return -1;
+    }
+
+    // after Create, in OnCreate:
+    m_viewStatus.SetFont(CFont::FromHandle(
+        (HFONT)GetStockObject(DEFAULT_GUI_FONT)));
+
+    // Do NOT require CreateDeviceResources() here.
+    // D2D is created on first OnSize/OnDraw when the client size is known.
+
     return 0;
 }
 
@@ -185,7 +225,7 @@ bool CVideoView::CreateDeviceResources()
         return false;
 
     CRect rc;
-    GetClientRect(&rc);
+    rc = GetVideoClientRect();
     if (rc.Width() > 0 && rc.Height() > 0)
         OnResize(rc.Width(), rc.Height());
 
@@ -272,13 +312,37 @@ void CVideoView::OnResize(UINT width, UINT height)
     m_d2dContext->SetTarget(m_targetBitmap.Get());
 }
 
+CRect CVideoView::GetVideoClientRect() const
+{
+    CRect rc;
+    GetClientRect(&rc);
+    if (rc.Height() > kViewStatusHeight)
+        rc.bottom -= kViewStatusHeight;
+    else
+        rc.bottom = rc.top;
+    return rc;
+}
+
 void CVideoView::OnSize(UINT nType, int cx, int cy)
 {
     CView::OnSize(nType, cx, cy);
-    if (cx > 0 && cy > 0)
-        OnResize(static_cast<UINT>(cx), static_cast<UINT>(cy));
-}
 
+    if (cx <= 0 || cy <= 0)
+        return;
+
+    const int statusH = kViewStatusHeight;
+    const int videoH = (cy > statusH) ? (cy - statusH) : 0;
+
+    if (m_viewStatus.GetSafeHwnd())
+    {
+        m_viewStatus.MoveWindow(0, videoH, cx, statusH);
+        m_viewStatus.Invalidate(FALSE);
+    }
+
+    // D2D only covers the video area above the status strip
+    if (videoH > 0)
+        OnResize(static_cast<UINT>(cx), static_cast<UINT>(videoH));
+}
 bool CVideoView::CreateFrameBitmap()
 {
     if (!HasVideo() || !m_d2dContext)
@@ -316,7 +380,7 @@ bool CVideoView::CreateFrameBitmap()
 void CVideoView::OnDraw(CDC* /*pDC*/)
 {
     CRect rc;
-    GetClientRect(&rc);
+    rc = GetVideoClientRect();
     if (rc.Width() <= 0 || rc.Height() <= 0)
         return;
 
@@ -709,7 +773,7 @@ BOOL CVideoView::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
 
     // Zoom toward cursor
     CRect rc;
-    GetClientRect(&rc);
+    rc = GetVideoClientRect();
     const float cx = static_cast<float>(rc.Width()) * 0.5f;
     const float cy = static_cast<float>(rc.Height()) * 0.5f;
     const float mx = static_cast<float>(pt.x);

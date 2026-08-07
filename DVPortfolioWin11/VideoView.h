@@ -69,6 +69,12 @@ protected:
 	bool m_playing = false;
 	static const UINT_PTR s_playTimerId = 1;
 
+protected:
+	CStatic m_viewStatus;
+	static const int kViewStatusHeight = 22;
+
+	CRect GetVideoClientRect() const;
+
 // Implementation
 public:
 	virtual ~CVideoView();
