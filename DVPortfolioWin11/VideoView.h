@@ -71,9 +71,6 @@ protected:
 
 protected:
 	CStatic m_viewStatus;
-	static const int kViewStatusHeight = 22;
-
-	CRect GetVideoClientRect() const;
 
 // Implementation
 public:
@@ -94,6 +91,18 @@ public:
 	void RefreshStatusBarForThisView();
 
 protected:
+	CSliderCtrl m_seekSlider;
+	bool m_updatingSeekSlider = false;
+
+	static const int kSeekHeight = 28;
+	static const int kViewStatusHeight = 22;
+
+	CRect GetVideoClientRect() const;
+	void LayoutBottomControls(int cx, int cy);
+	void SyncSeekSliderFromFrame();
+	void ApplySeekSliderToFrame();
+
+protected:
 	float m_zoom = 1.0f;   // 1 = fit window
 	float m_panX = 0.0f;   // pixels in view space
 	float m_panY = 0.0f;
@@ -110,6 +119,7 @@ protected:
 	afx_msg void OnLButtonDown(UINT nFlags, CPoint point);
 	afx_msg void OnLButtonUp(UINT nFlags, CPoint point);
 	afx_msg void OnMouseMove(UINT nFlags, CPoint point);
+	afx_msg void OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar);
 
 
 // Generated message map functions

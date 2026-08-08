@@ -40,6 +40,7 @@ BEGIN_MESSAGE_MAP(CVideoView, CView)
     ON_WM_LBUTTONDOWN()
     ON_WM_LBUTTONUP()
     ON_WM_MOUSEMOVE()
+    ON_WM_HSCROLL()
 END_MESSAGE_MAP()
 
 
@@ -92,40 +93,43 @@ void CVideoView::SetCurrentFrame(int64_t frame)
 
 void CVideoView::RefreshStatusBarForThisView()
 {
-    if (!m_viewStatus.GetSafeHwnd())
-        return;
-
-    CString text;
-    if (!HasVideo())
+    if (m_viewStatus.GetSafeHwnd())
     {
-        text = _T("No video");
-    }
-    else
-    {
-        const int64_t frame = GetCurrentFrame();
-        const int64_t total = GetTotalFrames();
-        const double fps = GetFrameRate();
-
-        CString timeText = _T("00:00:00@00");
-        if (fps > 0.0 && frame >= 0)
+        CString text;
+        if (!HasVideo())
         {
-            const double seconds = static_cast<double>(frame) / fps;
-            const int h = static_cast<int>(seconds) / 3600;
-            const int m = (static_cast<int>(seconds) % 3600) / 60;
-            const int s = static_cast<int>(seconds) % 60;
-            int ff = static_cast<int>(frame % static_cast<int64_t>(fps + 0.5));
-            if (ff < 0) ff = 0;
-            timeText.Format(_T("%02d:%02d:%02d@%02d"), h, m, s, ff);
+            text = _T("No video");
+        }
+        else
+        {
+            const int64_t frame = GetCurrentFrame();
+            const int64_t total = GetTotalFrames();
+            const double fps = GetFrameRate();
+
+            CString timeText = _T("00:00:00@00");
+            if (fps > 0.0 && frame >= 0)
+            {
+                const double seconds = static_cast<double>(frame) / fps;
+                const int h = static_cast<int>(seconds) / 3600;
+                const int m = (static_cast<int>(seconds) % 3600) / 60;
+                const int s = static_cast<int>(seconds) % 60;
+                int ff = static_cast<int>(frame % static_cast<int64_t>(fps + 0.5));
+                if (ff < 0) ff = 0;
+                timeText.Format(_T("%02d:%02d:%02d@%02d"), h, m, s, ff);
+            }
+
+            if (total > 0)
+                text.Format(_T("Frame %lld / %lld    %s    %.3f fps"),
+                    frame, total, timeText.GetString(), fps);
+            else
+                text.Format(_T("Frame %lld    %s"), frame, timeText.GetString());
         }
 
-        if (total > 0)
-            text.Format(_T("Frame %lld / %lld    %s    %.3f fps"),
-                frame, total, timeText.GetString(), fps);
-        else
-            text.Format(_T("Frame %lld    %s"), frame, timeText.GetString());
+        m_viewStatus.SetWindowText(text);
     }
 
-    m_viewStatus.SetWindowText(text);
+    // Keep seek slider in sync with the current frame (single call site)
+    SyncSeekSliderFromFrame();
 }
 
 // CVideoView construction/destruction
@@ -155,6 +159,18 @@ int CVideoView::OnCreate(LPCREATESTRUCT lpCreateStruct)
     if (CView::OnCreate(lpCreateStruct) == -1)
         return -1;
 
+    if (!m_seekSlider.Create(
+        WS_CHILD | WS_VISIBLE | TBS_HORZ | TBS_NOTICKS | TBS_TOOLTIPS,
+        CRect(0, 0, 0, 0),
+        this,
+        2))
+    {
+        return -1;
+    }
+    m_seekSlider.SetRange(0, 0);
+    m_seekSlider.SetPageSize(10);
+    m_seekSlider.SetLineSize(1);
+
     if (!m_viewStatus.Create(
         _T("No video"),
         WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
@@ -165,14 +181,37 @@ int CVideoView::OnCreate(LPCREATESTRUCT lpCreateStruct)
         return -1;
     }
 
-    // after Create, in OnCreate:
     m_viewStatus.SetFont(CFont::FromHandle(
         (HFONT)GetStockObject(DEFAULT_GUI_FONT)));
 
-    // Do NOT require CreateDeviceResources() here.
-    // D2D is created on first OnSize/OnDraw when the client size is known.
-
     return 0;
+}
+
+void CVideoView::OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar)
+{
+    if (pScrollBar != nullptr &&
+        pScrollBar->GetSafeHwnd() == m_seekSlider.GetSafeHwnd())
+    {
+        switch (nSBCode)
+        {
+        case TB_LINEUP:
+        case TB_LINEDOWN:
+        case TB_PAGEUP:
+        case TB_PAGEDOWN:
+        case TB_THUMBTRACK:
+        case TB_THUMBPOSITION:
+        case TB_TOP:
+        case TB_BOTTOM:
+        case TB_ENDTRACK:
+            ApplySeekSliderToFrame();
+            break;
+        default:
+            break;
+        }
+        return;
+    }
+
+    CView::OnHScroll(nSBCode, nPos, pScrollBar);
 }
 
 void CVideoView::OnDestroy()
@@ -316,12 +355,29 @@ void CVideoView::OnResize(UINT width, UINT height)
     m_d2dContext->SetTarget(m_targetBitmap.Get());
 }
 
+void CVideoView::LayoutBottomControls(int cx, int cy)
+{
+    if (cx <= 0 || cy <= 0)
+        return;
+
+    const int bottomH = kSeekHeight + kViewStatusHeight;
+    int y = cy - bottomH;
+    if (y < 0) y = 0;
+
+    if (m_seekSlider.GetSafeHwnd())
+        m_seekSlider.MoveWindow(0, y, cx, kSeekHeight);
+
+    if (m_viewStatus.GetSafeHwnd())
+        m_viewStatus.MoveWindow(0, y + kSeekHeight, cx, kViewStatusHeight);
+}
+
 CRect CVideoView::GetVideoClientRect() const
 {
     CRect rc;
     GetClientRect(&rc);
-    if (rc.Height() > kViewStatusHeight)
-        rc.bottom -= kViewStatusHeight;
+    const int bottomH = kSeekHeight + kViewStatusHeight;
+    if (rc.Height() > bottomH)
+        rc.bottom -= bottomH;
     else
         rc.bottom = rc.top;
     return rc;
@@ -330,23 +386,56 @@ CRect CVideoView::GetVideoClientRect() const
 void CVideoView::OnSize(UINT nType, int cx, int cy)
 {
     CView::OnSize(nType, cx, cy);
-
     if (cx <= 0 || cy <= 0)
         return;
 
-    const int statusH = kViewStatusHeight;
-    const int videoH = (cy > statusH) ? (cy - statusH) : 0;
+    LayoutBottomControls(cx, cy);
 
-    if (m_viewStatus.GetSafeHwnd())
+    CRect videoRc = GetVideoClientRect();
+    if (videoRc.Width() > 0 && videoRc.Height() > 0)
+        OnResize(static_cast<UINT>(videoRc.Width()),
+            static_cast<UINT>(videoRc.Height()));
+}
+
+void CVideoView::SyncSeekSliderFromFrame()
+{
+    if (!m_seekSlider.GetSafeHwnd())
+        return;
+
+    m_updatingSeekSlider = true;
+
+    if (!HasVideo())
     {
-        m_viewStatus.MoveWindow(0, videoH, cx, statusH);
-        m_viewStatus.Invalidate(FALSE);
+        m_seekSlider.SetRange(0, 0);
+        m_seekSlider.SetPos(0);
+    }
+    else
+    {
+        const int64_t total = GetTotalFrames();
+        const int maxPos = (total > 1) ? static_cast<int>(total - 1) : 0;
+        m_seekSlider.SetRange(0, maxPos);
+
+        int pos = static_cast<int>(GetCurrentFrame());
+        if (pos < 0) pos = 0;
+        if (pos > maxPos) pos = maxPos;
+        m_seekSlider.SetPos(pos);
     }
 
-    // D2D only covers the video area above the status strip
-    if (videoH > 0)
-        OnResize(static_cast<UINT>(cx), static_cast<UINT>(videoH));
+    m_updatingSeekSlider = false;
 }
+
+void CVideoView::ApplySeekSliderToFrame()
+{
+    if (!HasVideo() || m_updatingSeekSlider)
+        return;
+
+    if (m_playing)
+        StopPlayback();
+
+    const int pos = m_seekSlider.GetPos();
+    SetCurrentFrame(static_cast<int64_t>(pos));
+}
+
 bool CVideoView::CreateFrameBitmap()
 {
     if (!HasVideo() || !m_d2dContext)
