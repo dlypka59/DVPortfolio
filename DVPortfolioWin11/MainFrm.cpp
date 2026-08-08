@@ -8,6 +8,8 @@
 
 #include "VideoView.h"
 
+#include <functional>
+
 #include "MainFrm.h"
 
 
@@ -37,6 +39,11 @@ BEGIN_MESSAGE_MAP(CMainFrame, CMDIFrameWndEx)
 	ON_REGISTERED_MESSAGE(AFX_WM_CREATETOOLBAR, &CMainFrame::OnToolbarCreateNew)
 	ON_COMMAND_RANGE(ID_VIEW_APPLOOK_WIN_2000, ID_VIEW_APPLOOK_WINDOWS_7, &CMainFrame::OnApplicationLook)
 	ON_UPDATE_COMMAND_UI_RANGE(ID_VIEW_APPLOOK_WIN_2000, ID_VIEW_APPLOOK_WINDOWS_7, &CMainFrame::OnUpdateApplicationLook)
+	ON_COMMAND(ID_PLAY_ALL, &CMainFrame::OnPlayAll)
+	ON_COMMAND(ID_PAUSE_ALL, &CMainFrame::OnPauseAll)
+	ON_COMMAND(ID_TOGGLE_PLAY_ALL, &CMainFrame::OnTogglePlayAll)
+	ON_UPDATE_COMMAND_UI(ID_PLAY_ALL, &CMainFrame::OnUpdatePlayAll)
+	ON_UPDATE_COMMAND_UI(ID_PAUSE_ALL, &CMainFrame::OnUpdatePauseAll)
 END_MESSAGE_MAP()
 
 static UINT indicators[] =
@@ -222,6 +229,96 @@ void CMainFrame::UpdateViewCountStatus()
 
 	if (m_wndStatusBar.GetSafeHwnd())
 		m_wndStatusBar.SetPaneText(1, text);
+}
+
+static void ForEachVideoView(const std::function<void(CVideoView*)>& fn)
+{
+	CWinApp* pApp = AfxGetApp();
+	if (!pApp)
+		return;
+
+	POSITION posTemplate = pApp->GetFirstDocTemplatePosition();
+	while (posTemplate)
+	{
+		CDocTemplate* pTemplate = pApp->GetNextDocTemplate(posTemplate);
+		if (!pTemplate)
+			continue;
+
+		POSITION posDoc = pTemplate->GetFirstDocPosition();
+		while (posDoc)
+		{
+			CDocument* pDoc = pTemplate->GetNextDoc(posDoc);
+			if (!pDoc)
+				continue;
+
+			POSITION posView = pDoc->GetFirstViewPosition();
+			while (posView)
+			{
+				CView* pView = pDoc->GetNextView(posView);
+				auto* v = DYNAMIC_DOWNCAST(CVideoView, pView);
+				if (v && v->HasVideo())
+					fn(v);
+			}
+		}
+	}
+}
+
+void CMainFrame::StartAllPlayback()
+{
+	ForEachVideoView([](CVideoView* v) { v->StartPlayback(); });
+}
+
+void CMainFrame::StopAllPlayback()
+{
+	ForEachVideoView([](CVideoView* v) { v->StopPlayback(); });
+}
+
+void CMainFrame::ToggleAllPlayback()
+{
+	bool anyPlaying = false;
+	ForEachVideoView([&](CVideoView* v)
+		{
+			if (v->IsPlaying())
+				anyPlaying = true;
+		});
+
+	if (anyPlaying)
+		StopAllPlayback();
+	else
+		StartAllPlayback();
+}
+
+void CMainFrame::OnPlayAll()
+{
+	StartAllPlayback();
+}
+
+void CMainFrame::OnPauseAll()
+{
+	StopAllPlayback();
+}
+
+void CMainFrame::OnTogglePlayAll()
+{
+	ToggleAllPlayback();
+}
+
+void CMainFrame::OnUpdatePlayAll(CCmdUI* pCmdUI)
+{
+	bool any = false;
+	ForEachVideoView([&](CVideoView*) { any = true; });
+	pCmdUI->Enable(any);
+}
+
+void CMainFrame::OnUpdatePauseAll(CCmdUI* pCmdUI)
+{
+	bool anyPlaying = false;
+	ForEachVideoView([&](CVideoView* v)
+		{
+			if (v->IsPlaying())
+				anyPlaying = true;
+		});
+	pCmdUI->Enable(anyPlaying);
 }
 
 // CMainFrame diagnostics

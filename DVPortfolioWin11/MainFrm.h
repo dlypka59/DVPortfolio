@@ -31,6 +31,18 @@ public:
 	virtual void Dump(CDumpContext& dc) const;
 #endif
 
+public:
+	void StartAllPlayback();
+	void StopAllPlayback();
+	void ToggleAllPlayback();
+
+protected:
+	afx_msg void OnPlayAll();
+	afx_msg void OnPauseAll();
+	afx_msg void OnTogglePlayAll();
+	afx_msg void OnUpdatePlayAll(CCmdUI* pCmdUI);
+	afx_msg void OnUpdatePauseAll(CCmdUI* pCmdUI);
+
 protected:  // control bar embedded members
 	CMFCMenuBar       m_wndMenuBar;
 	CMFCToolBar       m_wndToolBar;
