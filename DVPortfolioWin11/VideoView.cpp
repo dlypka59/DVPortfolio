@@ -574,7 +574,11 @@ void CVideoView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
         break;
 
     case VK_SPACE:
+        if (m_spaceBusy)
+            break;
+        m_spaceBusy = true;
         TogglePlayback();
+        m_spaceBusy = false;
         break;
 
     case 'R':

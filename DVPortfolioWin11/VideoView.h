@@ -98,6 +98,8 @@ protected:
 	float m_panX = 0.0f;   // pixels in view space
 	float m_panY = 0.0f;
 
+	bool m_spaceBusy = false;
+
 	bool  m_panning = false;
 	CPoint m_lastPanPoint{};
 
