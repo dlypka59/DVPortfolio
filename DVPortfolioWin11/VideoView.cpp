@@ -589,11 +589,21 @@ BOOL CVideoView::PreTranslateMessage(MSG* pMsg)
     {
         switch (pMsg->wParam)
         {
+        case VK_SPACE:
+            if ((GetKeyState(VK_CONTROL) & 0x8000) != 0)
+            {
+                // Ctrl+Space → all views
+                if (CMainFrame* pMain = dynamic_cast<CMainFrame*>(AfxGetMainWnd()))
+                    pMain->ToggleAllPlayback();
+                return TRUE;
+            }
+            // Plain Space → this view only
+            OnKeyDown(VK_SPACE, 1, 0);
+            return TRUE;
         case VK_LEFT:
         case VK_RIGHT:
         case VK_UP:
         case VK_DOWN:
-        case VK_SPACE:
         case 'R':
         case 'r':
         case VK_OEM_PLUS:    // '=' key (often Shift for '+')
