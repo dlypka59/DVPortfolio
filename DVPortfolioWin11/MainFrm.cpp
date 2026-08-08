@@ -6,6 +6,8 @@
 #include "framework.h"
 #include "DVPortfolioWin11.h"
 
+#include "VideoView.h"
+
 #include "MainFrm.h"
 
 
@@ -64,48 +66,27 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 
 	BOOL bNameValid;
 
+	// ---- Menu bar ----
 	if (!m_wndMenuBar.Create(this))
 	{
 		TRACE0("Failed to create menubar\n");
-		return -1;      // fail to create
-	}
-
-	if (!m_wndStatusBar.Create(this))
-	{
-		TRACE0("Failed to create status bar\n");
 		return -1;
 	}
 
-	static UINT indicators[3] =
-	{
-		ID_SEPARATOR,   // stretchy message area
-		ID_SEPARATOR,   // frame
-		ID_SEPARATOR    // timecode
-	};
+	m_wndMenuBar.SetPaneStyle(
+		m_wndMenuBar.GetPaneStyle() | CBRS_SIZE_DYNAMIC | CBRS_TOOLTIPS | CBRS_FLYBY);
 
-	if (!m_wndStatusBar.SetIndicators(indicators, 3))
-	{
-		TRACE0("Failed to set status bar indicators\n");
-		return -1;
-	}
-
-	m_wndStatusBar.SetPaneInfo(0, ID_SEPARATOR, SBPS_STRETCH, 1);
-	m_wndStatusBar.SetPaneInfo(1, ID_SEPARATOR, SBPS_NORMAL, 160);
-	m_wndStatusBar.SetPaneInfo(2, ID_SEPARATOR, SBPS_NORMAL, 140);
-
-	m_wndStatusBar.SetPaneText(1, _T("Frame —"));
-	m_wndStatusBar.SetPaneText(2, _T("00:00:00@00"));
-
-	m_wndMenuBar.SetPaneStyle(m_wndMenuBar.GetPaneStyle() | CBRS_SIZE_DYNAMIC | CBRS_TOOLTIPS | CBRS_FLYBY);
-
-	// prevent the menu bar from taking the focus on activation
+	// Prevent the menu bar from taking focus on activation
 	CMFCPopupMenu::SetForceMenuFocus(FALSE);
 
-	if (!m_wndToolBar.CreateEx(this, TBSTYLE_FLAT, WS_CHILD | WS_VISIBLE | CBRS_TOP | CBRS_GRIPPER | CBRS_TOOLTIPS | CBRS_FLYBY | CBRS_SIZE_DYNAMIC) ||
+	// ---- Toolbar ----
+	if (!m_wndToolBar.CreateEx(this, TBSTYLE_FLAT,
+		WS_CHILD | WS_VISIBLE | CBRS_TOP | CBRS_GRIPPER |
+		CBRS_TOOLTIPS | CBRS_FLYBY | CBRS_SIZE_DYNAMIC) ||
 		!m_wndToolBar.LoadToolBar(theApp.m_bHiColorIcons ? IDR_MAINFRAME_256 : IDR_MAINFRAME))
 	{
 		TRACE0("Failed to create toolbar\n");
-		return -1;      // fail to create
+		return -1;
 	}
 
 	CString strToolBarName;
@@ -118,46 +99,59 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	ASSERT(bNameValid);
 	m_wndToolBar.EnableCustomizeButton(TRUE, ID_VIEW_CUSTOMIZE, strCustomize);
 
-	// Allow user-defined toolbars operations:
+	// User-defined toolbars
 	InitUserToolbars(nullptr, uiFirstUserToolBarId, uiLastUserToolBarId);
 
-	// TODO: Delete these five lines if you don't want the toolbar and menubar to be dockable
+
+	// ---- Status bar: pane 0 = Ready, pane 1 = view count ----
+	if (!m_wndStatusBar.Create(this))
+	{
+		TRACE0("Failed to create status bar\n");
+		return -1;
+	}
+
+	static UINT indicators[] =
+	{
+		ID_SEPARATOR,   // pane 0: Ready (MFC-owned)
+		ID_SEPARATOR    // pane 1: Views: N (ours)
+	};
+
+	if (!m_wndStatusBar.SetIndicators(indicators, 2))
+	{
+		TRACE0("Failed to set status bar indicators\n");
+		return -1;
+	}
+
+	m_wndStatusBar.SetPaneInfo(0, ID_SEPARATOR, SBPS_STRETCH, 1);
+	m_wndStatusBar.SetPaneInfo(1, ID_SEPARATOR, SBPS_NORMAL, 100);
+	m_wndStatusBar.SetPaneText(1, _T("Views: 0"));
+
+
+	// ---- Docking ----
 	m_wndMenuBar.EnableDocking(CBRS_ALIGN_ANY);
 	m_wndToolBar.EnableDocking(CBRS_ALIGN_ANY);
 	EnableDocking(CBRS_ALIGN_ANY);
 	DockPane(&m_wndMenuBar);
 	DockPane(&m_wndToolBar);
 
-
-	// enable Visual Studio 2005 style docking window behavior
 	CDockingManager::SetDockingMode(DT_SMART);
-	// enable Visual Studio 2005 style docking window auto-hide behavior
 	EnableAutoHidePanes(CBRS_ALIGN_ANY);
-	// set the visual manager and style based on persisted value
+
 	OnApplicationLook(theApp.m_nAppLook);
 
-	// Enable enhanced windows management dialog
 	EnableWindowsDialog(ID_WINDOW_MANAGER, ID_WINDOW_MANAGER, TRUE);
-
-	// Enable toolbar and docking window menu replacement
 	EnablePaneMenu(TRUE, ID_VIEW_CUSTOMIZE, strCustomize, ID_VIEW_TOOLBAR);
-
-	// enable quick (Alt+drag) toolbar customization
 	CMFCToolBar::EnableQuickCustomization();
 
 	if (CMFCToolBar::GetUserImages() == nullptr)
 	{
-		// load user-defined toolbar images
 		if (m_UserImages.Load(_T(".\\UserImages.bmp")))
 		{
 			CMFCToolBar::SetUserImages(&m_UserImages);
 		}
 	}
 
-	// enable menu personalization (most-recently used commands)
-	// TODO: define your own basic commands, ensuring that each pulldown menu has at least one basic command.
 	CList<UINT, UINT> lstBasicCommands;
-
 	lstBasicCommands.AddTail(ID_FILE_NEW);
 	lstBasicCommands.AddTail(ID_FILE_OPEN);
 	lstBasicCommands.AddTail(ID_FILE_SAVE);
@@ -175,7 +169,6 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	lstBasicCommands.AddTail(ID_VIEW_APPLOOK_OFF_2007_BLACK);
 	lstBasicCommands.AddTail(ID_VIEW_APPLOOK_OFF_2007_AQUA);
 	lstBasicCommands.AddTail(ID_VIEW_APPLOOK_WINDOWS_7);
-
 	CMFCToolBar::SetBasicCommands(lstBasicCommands);
 
 	return 0;
@@ -191,30 +184,44 @@ BOOL CMainFrame::PreCreateWindow(CREATESTRUCT& cs)
 	return TRUE;
 }
 
-
-void CMainFrame::UpdateVideoStatus(int64_t frame, int64_t totalFrames, double fps)
+void CMainFrame::UpdateViewCountStatus()
 {
-	CString frameText;
-	if (totalFrames > 0)
-		frameText.Format(_T("Frame %lld / %lld"), frame, totalFrames);
-	else
-		frameText.Format(_T("Frame %lld"), frame);
+	int count = 0;
 
-	CString timeText = _T("00:00:00@00");
-	if (fps > 0.0 && frame >= 0)
+	CWinApp* pApp = AfxGetApp();
+	if (pApp)
 	{
-		const double seconds = static_cast<double>(frame) / fps;
-		const int h = static_cast<int>(seconds) / 3600;
-		const int m = (static_cast<int>(seconds) % 3600) / 60;
-		const int s = static_cast<int>(seconds) % 60;
-		int ff = static_cast<int>(frame % static_cast<int64_t>(fps + 0.5));
-		if (ff < 0) ff = 0;
+		POSITION posTemplate = pApp->GetFirstDocTemplatePosition();
+		while (posTemplate)
+		{
+			CDocTemplate* pTemplate = pApp->GetNextDocTemplate(posTemplate);
+			if (!pTemplate)
+				continue;
 
-		timeText.Format(_T("%02d:%02d:%02d@%02d"), h, m, s, ff);
+			POSITION posDoc = pTemplate->GetFirstDocPosition();
+			while (posDoc)
+			{
+				CDocument* pDoc = pTemplate->GetNextDoc(posDoc);
+				if (!pDoc)
+					continue;
+
+				POSITION posView = pDoc->GetFirstViewPosition();
+				while (posView)
+				{
+					CView* pView = pDoc->GetNextView(posView);
+					auto* pVideoView = DYNAMIC_DOWNCAST(CVideoView, pView);
+					if (pVideoView != nullptr && pVideoView->HasVideo())
+						++count;
+				}
+			}
+		}
 	}
 
-	m_wndStatusBar.SetPaneText(1, frameText);
-	m_wndStatusBar.SetPaneText(2, timeText);
+	CString text;
+	text.Format(_T("Views: %d"), count);
+
+	if (m_wndStatusBar.GetSafeHwnd())
+		m_wndStatusBar.SetPaneText(1, text);
 }
 
 // CMainFrame diagnostics

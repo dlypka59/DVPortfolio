@@ -16,7 +16,7 @@ public:
 
 // Operations
 public:
-	void UpdateVideoStatus(int64_t frame, int64_t totalFrames, double fps);
+	void UpdateViewCountStatus();
 
 // Overrides
 public:

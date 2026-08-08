@@ -177,9 +177,13 @@ int CVideoView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 
 void CVideoView::OnDestroy()
 {
-    DiscardDeviceResources();
     StopPlayback();
-    CView::OnDestroy(); 
+
+    CView::OnDestroy();
+
+    // Recount after this view is gone
+    if (auto* pMain = dynamic_cast<CMainFrame*>(AfxGetMainWnd()))
+        pMain->UpdateViewCountStatus();
 }
 
 BOOL CVideoView::OnEraseBkgnd(CDC* /*pDC*/)
@@ -484,6 +488,10 @@ void CVideoView::OnInitialUpdate()
     SetFocus();
     RefreshStatusBarForThisView();
     Invalidate(FALSE);
+
+    // Update main-frame view count
+    if (auto* pMain = dynamic_cast<CMainFrame*>(AfxGetMainWnd()))
+        pMain->UpdateViewCountStatus();
 }
 
 BOOL CVideoView::PreTranslateMessage(MSG* pMsg)
