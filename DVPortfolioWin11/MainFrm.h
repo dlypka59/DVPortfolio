@@ -2,15 +2,12 @@
 //
 #pragma once
 
-#include "VideoView.h"
 
 class CMainFrame : public CMDIFrameWndEx
 {
 	DECLARE_DYNAMIC(CMainFrame)
 public:
 	CMainFrame() noexcept;
-
-	friend CVideoView;
 
 	// Attributes
 public:
@@ -26,6 +23,7 @@ public:
 
 	// Operations
 public:
+	void NotifyPlayFpsUserChanged() { m_playFpsUserSet = true; }
 
 	// Overrides
 public:

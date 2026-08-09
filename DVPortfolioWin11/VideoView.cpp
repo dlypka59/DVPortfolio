@@ -804,7 +804,7 @@ void CVideoView::OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar)
 
 		if (CMainFrame* pMain = dynamic_cast<CMainFrame*>(AfxGetMainWnd()))
 		{
-			pMain->m_playFpsUserSet = true;
+			pMain->NotifyPlayFpsUserChanged();
 			pMain->SetPlayFps(static_cast<double>(m_fpsSlider.GetPos()));
 		}
 		return;
