@@ -30,17 +30,21 @@
 #define ID_VIEW_APPLOOK_WINDOWS_7       219
 #define IDS_EDIT_MENU                   306
 #define ID_PLAY_ALL                     310
+#define IDD_PLAYRATE_BAR                310
 #define ID_PAUSE_ALL                    311
 #define ID_TOGGLE_PLAY_ALL              312
+#define IDC_PLAYRATE_LABEL              1000
+#define IDC_SLIDER2                     1002
+#define IDC_PLAYRATE_SLIDER             1003
 #define ID_VIEW_PLAYALL                 32771
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        310
+#define _APS_NEXT_RESOURCE_VALUE        312
 #define _APS_NEXT_COMMAND_VALUE         32772
-#define _APS_NEXT_CONTROL_VALUE         1000
+#define _APS_NEXT_CONTROL_VALUE         1004
 #define _APS_NEXT_SYMED_VALUE           313
 #endif
 #endif

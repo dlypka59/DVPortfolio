@@ -1,36 +1,22 @@
-
 // MainFrm.cpp : implementation of the CMainFrame class
 //
 
 #include "pch.h"
 #include "framework.h"
 #include "DVPortfolioWin11.h"
-
 #include "VideoView.h"
-
 #include <functional>
-
 #include "MainFrm.h"
-
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
-
-// CMainFrame
 
 IMPLEMENT_DYNAMIC(CMainFrame, CMDIFrameWndEx)
 
 const int  iMaxUserToolbars = 10;
 const UINT uiFirstUserToolBarId = AFX_IDW_CONTROLBAR_FIRST + 40;
 const UINT uiLastUserToolBarId = uiFirstUserToolBarId + iMaxUserToolbars - 1;
-
-const UINT CMainFrame::m_statusPaneIds[3] =
-{
-	ID_SEPARATOR,   // existing message pane
-	ID_SEPARATOR,   // frame pane
-	ID_SEPARATOR    // timecode pane
-};
 
 BEGIN_MESSAGE_MAP(CMainFrame, CMDIFrameWndEx)
 	ON_WM_CREATE()
@@ -46,25 +32,15 @@ BEGIN_MESSAGE_MAP(CMainFrame, CMDIFrameWndEx)
 	ON_UPDATE_COMMAND_UI(ID_PAUSE_ALL, &CMainFrame::OnUpdatePauseAll)
 END_MESSAGE_MAP()
 
-static UINT indicators[] =
-{
-	ID_SEPARATOR,           // status line indicator
-	ID_INDICATOR_CAPS,
-	ID_INDICATOR_NUM,
-	ID_INDICATOR_SCRL,
-};
-
-// CMainFrame construction/destruction
-
 CMainFrame::CMainFrame() noexcept
 {
-	// TODO: add member initialization code here
 	theApp.m_nAppLook = theApp.GetInt(_T("ApplicationLook"), ID_VIEW_APPLOOK_VS_2008);
+	m_playFps = 30.0;
+	m_playFpsUserSet = false;
 }
 
 CMainFrame::~CMainFrame()
-{
-}
+{}
 
 int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 {
@@ -83,7 +59,6 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	m_wndMenuBar.SetPaneStyle(
 		m_wndMenuBar.GetPaneStyle() | CBRS_SIZE_DYNAMIC | CBRS_TOOLTIPS | CBRS_FLYBY);
 
-	// Prevent the menu bar from taking focus on activation
 	CMFCPopupMenu::SetForceMenuFocus(FALSE);
 
 	// ---- Toolbar ----
@@ -106,9 +81,7 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	ASSERT(bNameValid);
 	m_wndToolBar.EnableCustomizeButton(TRUE, ID_VIEW_CUSTOMIZE, strCustomize);
 
-	// User-defined toolbars
 	InitUserToolbars(nullptr, uiFirstUserToolBarId, uiLastUserToolBarId);
-
 
 	// ---- Status bar: pane 0 = Ready, pane 1 = view count ----
 	if (!m_wndStatusBar.Create(this))
@@ -117,13 +90,13 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 		return -1;
 	}
 
-	static UINT indicators[] =
+	static UINT statusIndicators[] =
 	{
-		ID_SEPARATOR,   // pane 0: Ready (MFC-owned)
-		ID_SEPARATOR    // pane 1: Views: N (ours)
+		ID_SEPARATOR,
+		ID_SEPARATOR
 	};
 
-	if (!m_wndStatusBar.SetIndicators(indicators, 2))
+	if (!m_wndStatusBar.SetIndicators(statusIndicators, 2))
 	{
 		TRACE0("Failed to set status bar indicators\n");
 		return -1;
@@ -133,6 +106,10 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	m_wndStatusBar.SetPaneInfo(1, ID_SEPARATOR, SBPS_NORMAL, 100);
 	m_wndStatusBar.SetPaneText(1, _T("Views: 0"));
 
+	// Global play FPS is stored on this frame (m_playFps).
+	// The FPS slider UI is on each CVideoView (avoids CDialogBar issues).
+	m_playFps = 30.0;
+	m_playFpsUserSet = false;
 
 	// ---- Docking ----
 	m_wndMenuBar.EnableDocking(CBRS_ALIGN_ANY);
@@ -153,9 +130,7 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	if (CMFCToolBar::GetUserImages() == nullptr)
 	{
 		if (m_UserImages.Load(_T(".\\UserImages.bmp")))
-		{
 			CMFCToolBar::SetUserImages(&m_UserImages);
-		}
 	}
 
 	CList<UINT, UINT> lstBasicCommands;
@@ -183,11 +158,8 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 
 BOOL CMainFrame::PreCreateWindow(CREATESTRUCT& cs)
 {
-	if( !CMDIFrameWndEx::PreCreateWindow(cs) )
+	if (!CMDIFrameWndEx::PreCreateWindow(cs))
 		return FALSE;
-	// TODO: Modify the Window class or styles here by modifying
-	//  the CREATESTRUCT cs
-
 	return TRUE;
 }
 
@@ -321,7 +293,40 @@ void CMainFrame::OnUpdatePauseAll(CCmdUI* pCmdUI)
 	pCmdUI->Enable(anyPlaying);
 }
 
-// CMainFrame diagnostics
+void CMainFrame::SetPlayFps(double fps)
+{
+	if (fps < 1.0)
+		fps = 1.0;
+	if (fps > 240.0)
+		fps = 240.0;
+
+	m_playFps = fps;
+
+	// Restart timers on views that are playing
+	ForEachVideoView([](CVideoView* v)
+		{
+			if (v->IsPlaying())
+			{
+				v->StopPlayback();
+				v->StartPlayback();
+			}
+		});
+
+	// Keep each view's FPS slider thumb in sync
+	ForEachVideoView([](CVideoView* v)
+		{
+			v->SyncFpsSliderFromMain();
+		});
+}
+
+void CMainFrame::InitPlayFpsFromVideo(double nativeFps)
+{
+	if (m_playFpsUserSet)
+		return;
+	if (nativeFps < 1.0)
+		nativeFps = 30.0;
+	SetPlayFps(nativeFps);
+}
 
 #ifdef _DEBUG
 void CMainFrame::AssertValid() const
@@ -333,10 +338,7 @@ void CMainFrame::Dump(CDumpContext& dc) const
 {
 	CMDIFrameWndEx::Dump(dc);
 }
-#endif //_DEBUG
-
-
-// CMainFrame message handlers
+#endif
 
 void CMainFrame::OnWindowManager()
 {
@@ -345,18 +347,17 @@ void CMainFrame::OnWindowManager()
 
 void CMainFrame::OnViewCustomize()
 {
-	CMFCToolBarsCustomizeDialog* pDlgCust = new CMFCToolBarsCustomizeDialog(this, TRUE /* scan menus */);
+	CMFCToolBarsCustomizeDialog* pDlgCust =
+		new CMFCToolBarsCustomizeDialog(this, TRUE);
 	pDlgCust->EnableUserDefinedToolbars();
 	pDlgCust->Create();
 }
 
-LRESULT CMainFrame::OnToolbarCreateNew(WPARAM wp,LPARAM lp)
+LRESULT CMainFrame::OnToolbarCreateNew(WPARAM wp, LPARAM lp)
 {
-	LRESULT lres = CMDIFrameWndEx::OnToolbarCreateNew(wp,lp);
+	LRESULT lres = CMDIFrameWndEx::OnToolbarCreateNew(wp, lp);
 	if (lres == 0)
-	{
 		return 0;
-	}
 
 	CMFCToolBar* pUserToolbar = (CMFCToolBar*)lres;
 	ASSERT_VALID(pUserToolbar);
@@ -365,7 +366,6 @@ LRESULT CMainFrame::OnToolbarCreateNew(WPARAM wp,LPARAM lp)
 	CString strCustomize;
 	bNameValid = strCustomize.LoadString(IDS_TOOLBAR_CUSTOMIZE);
 	ASSERT(bNameValid);
-
 	pUserToolbar->EnableCustomizeButton(TRUE, ID_VIEW_CUSTOMIZE, strCustomize);
 	return lres;
 }
@@ -373,7 +373,6 @@ LRESULT CMainFrame::OnToolbarCreateNew(WPARAM wp,LPARAM lp)
 void CMainFrame::OnApplicationLook(UINT id)
 {
 	CWaitCursor wait;
-
 	theApp.m_nAppLook = id;
 
 	switch (theApp.m_nAppLook)
@@ -381,62 +380,50 @@ void CMainFrame::OnApplicationLook(UINT id)
 	case ID_VIEW_APPLOOK_WIN_2000:
 		CMFCVisualManager::SetDefaultManager(RUNTIME_CLASS(CMFCVisualManager));
 		break;
-
 	case ID_VIEW_APPLOOK_OFF_XP:
 		CMFCVisualManager::SetDefaultManager(RUNTIME_CLASS(CMFCVisualManagerOfficeXP));
 		break;
-
 	case ID_VIEW_APPLOOK_WIN_XP:
 		CMFCVisualManagerWindows::m_b3DTabsXPTheme = TRUE;
 		CMFCVisualManager::SetDefaultManager(RUNTIME_CLASS(CMFCVisualManagerWindows));
 		break;
-
 	case ID_VIEW_APPLOOK_OFF_2003:
 		CMFCVisualManager::SetDefaultManager(RUNTIME_CLASS(CMFCVisualManagerOffice2003));
 		CDockingManager::SetDockingMode(DT_SMART);
 		break;
-
 	case ID_VIEW_APPLOOK_VS_2005:
 		CMFCVisualManager::SetDefaultManager(RUNTIME_CLASS(CMFCVisualManagerVS2005));
 		CDockingManager::SetDockingMode(DT_SMART);
 		break;
-
 	case ID_VIEW_APPLOOK_VS_2008:
 		CMFCVisualManager::SetDefaultManager(RUNTIME_CLASS(CMFCVisualManagerVS2008));
 		CDockingManager::SetDockingMode(DT_SMART);
 		break;
-
 	case ID_VIEW_APPLOOK_WINDOWS_7:
 		CMFCVisualManager::SetDefaultManager(RUNTIME_CLASS(CMFCVisualManagerWindows7));
 		CDockingManager::SetDockingMode(DT_SMART);
 		break;
-
 	default:
 		switch (theApp.m_nAppLook)
 		{
 		case ID_VIEW_APPLOOK_OFF_2007_BLUE:
 			CMFCVisualManagerOffice2007::SetStyle(CMFCVisualManagerOffice2007::Office2007_LunaBlue);
 			break;
-
 		case ID_VIEW_APPLOOK_OFF_2007_BLACK:
 			CMFCVisualManagerOffice2007::SetStyle(CMFCVisualManagerOffice2007::Office2007_ObsidianBlack);
 			break;
-
 		case ID_VIEW_APPLOOK_OFF_2007_SILVER:
 			CMFCVisualManagerOffice2007::SetStyle(CMFCVisualManagerOffice2007::Office2007_Silver);
 			break;
-
 		case ID_VIEW_APPLOOK_OFF_2007_AQUA:
 			CMFCVisualManagerOffice2007::SetStyle(CMFCVisualManagerOffice2007::Office2007_Aqua);
 			break;
 		}
-
 		CMFCVisualManager::SetDefaultManager(RUNTIME_CLASS(CMFCVisualManagerOffice2007));
 		CDockingManager::SetDockingMode(DT_SMART);
 	}
 
 	RedrawWindow(nullptr, nullptr, RDW_ALLCHILDREN | RDW_INVALIDATE | RDW_UPDATENOW | RDW_FRAME | RDW_ERASE);
-
 	theApp.WriteInt(_T("ApplicationLook"), theApp.m_nAppLook);
 }
 
@@ -445,32 +432,22 @@ void CMainFrame::OnUpdateApplicationLook(CCmdUI* pCmdUI)
 	pCmdUI->SetRadio(theApp.m_nAppLook == pCmdUI->m_nID);
 }
 
-
 BOOL CMainFrame::LoadFrame(UINT nIDResource, DWORD dwDefaultStyle, CWnd* pParentWnd, CCreateContext* pContext)
 {
-	// base class does the real work
-
 	if (!CMDIFrameWndEx::LoadFrame(nIDResource, dwDefaultStyle, pParentWnd, pContext))
-	{
 		return FALSE;
-	}
 
-
-	// enable customization button for all user toolbars
 	BOOL bNameValid;
 	CString strCustomize;
 	bNameValid = strCustomize.LoadString(IDS_TOOLBAR_CUSTOMIZE);
 	ASSERT(bNameValid);
 
-	for (int i = 0; i < iMaxUserToolbars; i ++)
+	for (int i = 0; i < iMaxUserToolbars; i++)
 	{
 		CMFCToolBar* pUserToolbar = GetUserToolBarByIndex(i);
 		if (pUserToolbar != nullptr)
-		{
 			pUserToolbar->EnableCustomizeButton(TRUE, ID_VIEW_CUSTOMIZE, strCustomize);
-		}
 	}
 
 	return TRUE;
 }
-
