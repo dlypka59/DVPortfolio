@@ -96,6 +96,7 @@ protected:
 	CSliderCtrl m_fpsSlider;
 	CSliderCtrl m_seekSlider;
 	CStatic     m_viewStatus;
+	CStatic     m_fpsLabel;
 
 	bool m_updatingFpsSlider = false;
 	bool m_updatingSeekSlider = false;
@@ -103,6 +104,7 @@ protected:
 	static const int kFpsHeight = 24;
 	static const int kSeekHeight = 28;
 	static const int kViewStatusHeight = 22;
+	static const int kFpsLabelWidth = 36;
 
 	CRect GetVideoClientRect() const;
 	void LayoutBottomControls(int cx, int cy);

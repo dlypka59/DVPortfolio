@@ -34,16 +34,17 @@
 #define ID_PAUSE_ALL                    311
 #define ID_TOGGLE_PLAY_ALL              312
 #define IDC_PLAYRATE_LABEL              1000
-#define IDC_SLIDER2                     1002
 #define IDC_PLAYRATE_SLIDER             1003
 #define ID_VIEW_PLAYALL                 32771
+#define ID_FILE_SAVE_SESSION            32772
+#define ID_FILE_LOAD_SESSION            32773
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        312
-#define _APS_NEXT_COMMAND_VALUE         32772
+#define _APS_NEXT_COMMAND_VALUE         32774
 #define _APS_NEXT_CONTROL_VALUE         1004
 #define _APS_NEXT_SYMED_VALUE           313
 #endif

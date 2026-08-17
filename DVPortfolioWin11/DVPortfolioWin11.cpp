@@ -15,6 +15,11 @@
 
 #include <mfapi.h>
 
+// dlypka Smoke Test
+#include "objectbox.h"
+
+#include "ObjectBoxStore.h"
+
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
@@ -120,6 +125,18 @@ BOOL CDVPortfolioWin11App::InitInstance()
 		AfxMessageBox(_T("Media Foundation failed to start."), MB_ICONERROR);
 		return FALSE;
 	}
+	else  // dlypka Smoke Test
+	{
+		CString msg;
+		msg.Format(_T("ObjectBox version: %S"), obx_version_string());
+		AfxMessageBox(msg);
+	}
+
+	if (!ObjectBoxStore::Instance().Open())
+	{
+		AfxMessageBox(_T("ObjectBox database failed to open."), MB_ICONWARNING);
+		// continue anyway; Save/Load will retry Open
+	}
 
 	// create main MDI Frame window
 	CMainFrame* pMainFrame = new CMainFrame;
@@ -147,6 +164,9 @@ BOOL CDVPortfolioWin11App::InitInstance()
 	pMainFrame->ShowWindow(m_nCmdShow);
 	pMainFrame->UpdateWindow();
 
+
+
+
 	return TRUE;
 }
 
@@ -154,6 +174,7 @@ int CDVPortfolioWin11App::ExitInstance()
 {
 	//TODO: handle additional resources you may have added
 	MFShutdown();
+	ObjectBoxStore::Instance().Close();
 	return CWinAppEx::ExitInstance();
 }
 

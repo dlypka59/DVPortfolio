@@ -230,6 +230,20 @@ int CVideoView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	{
 		return -1;
 	}
+
+	if (!m_fpsLabel.Create(
+		_T("fps"),
+		WS_CHILD | WS_VISIBLE | SS_CENTER | SS_CENTERIMAGE,
+		CRect(0, 0, 0, 0),
+		this,
+		4))
+	{
+		return -1;
+	}
+	m_fpsLabel.SetFont(CFont::FromHandle(
+		(HFONT)GetStockObject(DEFAULT_GUI_FONT)));
+
+
 	m_fpsSlider.SetRange(1, 240);
 	m_fpsSlider.SetPos(30);
 	m_fpsSlider.SetTicFreq(10);
@@ -274,8 +288,18 @@ void CVideoView::LayoutBottomControls(int cx, int cy)
 	if (y < 0)
 		y = 0;
 
+	const int labelW = kFpsLabelWidth; // or 36
+	const int gap = 4;
+
+	if (m_fpsLabel.GetSafeHwnd())
+		m_fpsLabel.MoveWindow(0, y, labelW, kFpsHeight);
+
 	if (m_fpsSlider.GetSafeHwnd())
-		m_fpsSlider.MoveWindow(0, y, cx, kFpsHeight);
+	{
+		const int sliderX = labelW + gap;
+		const int sliderW = (cx > sliderX) ? (cx - sliderX) : 0;
+		m_fpsSlider.MoveWindow(sliderX, y, sliderW, kFpsHeight);
+	}
 
 	if (m_seekSlider.GetSafeHwnd())
 		m_seekSlider.MoveWindow(0, y + kFpsHeight, cx, kSeekHeight);
